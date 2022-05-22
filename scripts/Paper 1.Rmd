@@ -1,0 +1,165 @@
+---
+title: "Paper 1"
+author: "Marion Nyberg"
+date: "27/04/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(data.table)
+library(janitor)
+library(plotly)
+library(plyr)
+library(knitr)
+library(tidyverse)
+#library(devtools)
+library(openair)
+library(tidyr)
+library(naniar)
+
+rm(list = ls())
+wd <- ("R:/SET/PlantSci/Shared Work Spaces/Ecology/Flux/SP_data")
+setwd(wd)
+knitr::opts_knit$set(root.dir = wd)
+```
+
+Below are conversion factors and functions used in the markdown file:
+
+```{r functions and conversions}
+d.avg <- 1800 * 48 #60 secs * 60 mins * 24 hours (# of secs in day)
+co2_conv <- 12.01/(10^6) 
+
+tidy.csv <- function(x){
+  input <- x[-c(1,2),] %>%
+    row_to_names(., 1)
+}  
+
+gofC.f <- function(x){ # function to convert to mean 30 minute to g of C
+  (x*d.avg)*co2_conv
+}
+
+gtomg.f <- function(x){ # function to convert from g to mg
+  x*1000
+}
+```
+
+```{r read data and some data class cleaning, include=FALSE}
+input <- fread("./PFP/L6/SilverPlains_L6.csv", header = FALSE, na.strings = "-9999") 
+input <- tidy.csv(input)
+
+input <- input %>% select(xlDateTime, Fe, Fg_Av, Fh, Fld, Flu, Fn, Fsu, Fsd, Precip, RH, Sws, Ta, Ts, VPD, Wd_SONIC_Av, Ws_SONIC_Av,ER_LT_all, GPP_LT,GPP_SOLO, NEE_LT ) # select met variables (add more as needed)
+colnames(input) <- c('Timestamp', 'LE', 'G', 'H', 'LWin', 'LWout', 'NETRAD', 'SWout', 'SWin', 'Precip', 'RH', 'SWC', 'Ta', 'Ts', 'VPD', 'WD', 'WS', 'ER_LT', 'GPP_LT', 'GPP_SOLO', 'NEE_LT')
+
+input$Timestamp <- as.POSIXct(input$Timestamp, format= "%d/%m/%Y %H:%M") # change from character to POSIXct
+input[,2:21] <- as.data.frame(sapply(input[,2:21], as.numeric)) # convert data frame from character to numeric
+
+input$jday <-yday(input$Timestamp) # add jday
+input$Year <- year(input$Timestamp) # extract year
+input$Year <- as.factor(input$Year) # convert year from integer to factor
+input$month <- month(as.POSIXct(input$Timestamp)) # extract month
+```
+
+```{r weird stuff in data filtered out}
+input$SWin <- ifelse(input$SWin < 0, NA, input$SWin)
+```
+
+```{r create daily mean dataframe, include=FALSE}
+# add variables to this daily df as needed
+input.daily <- input %>%
+  drop_na(Timestamp) %>% # some NAs in the Timestamp for some reason. Need to look into
+  ddply(c("Year", "jday"), summarise,
+        Precip = sum(Precip, na.rm = TRUE),
+        Ta.mean = mean(Ta, na.rm = TRUE),
+        Ta.max = max(Ta, na.rm = TRUE),
+        Ta.min = min(Ta, na.rm = TRUE),
+        Ts.mean = mean(Ts, na.rm = TRUE),
+        Ts.max = max(Ts, na.rm = TRUE),
+        Ts.min = min(Ts, na.rm = TRUE),
+        SWC = mean(SWC, na.rm = TRUE),
+        RH = mean(RH, na.rm = TRUE),
+        VPD = mean(VPD, na.rm = TRUE),
+        NEE_LT = mean(NEE_LT, na.rm = TRUE), #daily average umol m-2 s-1
+        ER_LT = mean(ER_LT, na.rm = TRUE),
+        GPP_LT = mean(GPP_LT, na.rm = TRUE)) %>%
+  mutate(NEE_LT.gC = gofC.f(NEE_LT),  #converts to daily total NEE in g C CO2
+         ER_LT.gC = gofC.f(ER_LT),
+         GPP_LT.gC = gofC.f(GPP_LT))
+```
+
+## Results {.tabset}
+
+### Precipitation
+
+```{r Precipitation, echo=FALSE, message = FALSE, fig.width = 10, fig.height = 4}
+# this is the rainfall data for Interlaken estate, but there is a lot missing so results are probably underestimated
+# need to uodate this each month or so from BOM website
+input.bom.rain <- read.csv("R:/SET/PlantSci/Shared Work Spaces/Ecology/Peoples files/Marion Nyberg/PhD/SP warming experiment/Interlaken_BOM_rainfall.csv") %>% #filter(Year >= 2010 & Year <= 2019) %>% # used all years available due to missing data 1995 - 2021
+  select(Year, Month, Day, Rainfall.amount..millimetres.) %>%
+  mutate(Precip = replace_na(Rainfall.amount..millimetres., 0)) %>%
+  ddply(c("Year", "Month"), summarise,
+  monthly.total = sum(Precip)) %>%
+  ddply(c("Month"), summarise,
+        monthly.total = mean(monthly.total)) 
+names(input.bom.rain)[1] <- "month"
+input.bom.rain$Year <- "BOMavg"
+
+input.daily %>% mutate(Precip = replace_na(Precip, 0)) %>%
+  ddply(c("Year", "month"), summarise,
+  monthly.total = sum(Precip)) %>%
+  ggplot(., aes(x = month, y = monthly.total, group = Year, fill = Year)) +
+       scale_x_discrete(limits = month.abb) +
+  geom_col(position = "dodge") + 
+  ylab("Monthly rainfall (mm)")+
+  xlab("Month")+
+  theme_classic()
+```
+
+Total monthly precipitation at Silver Plains. The BOM average is data from the Interlaken Estate (1995-2021), however, there are multiple missing values, so results may be underestimated.
+
+
+### Air and soil temperature
+
+
+Mean daily air temperature (top) and monthly (bottom)
+Mean daily air temperature
+
+```{r Air temperature, echo=FALSE, message = FALSE, fig.width = 10, fig.height = 4}
+ggplotly(ggplot(input.daily, aes(x = jday, y = Ts, group = Year)) +
+  geom_line(aes(color = Year))+
+  theme_classic())
+
+ggplotly(ggplot(input.daily, aes(x = jday, y = Ta.mean, group = Year)) +
+  geom_line(aes(color = Year))+
+     geom_ribbon(aes(ymin=Ta.min, ymax=Ta.max), alpha=.3, linetype=0) +
+  theme_classic())
+
+ggplotly(ggplot(input.daily, aes(x = jday, y = Ta.max, group = Year)) +
+  geom_line(aes(color = Year))+
+  theme_classic())
+
+ggplotly(ggplot(input.daily, aes(x = jday, y = Ta.min, group = Year)) +
+  geom_line(aes(color = Year))+
+  theme_classic())
+```
+
+### VPD
+
+```{r VPD, echo=FALSE, message = FALSE, fig.width = 10, fig.height = 4}
+ggplotly(ggplot(input.daily, aes(x = as.Date(jday, origin = ("2020-01-01")), y = VPD, group = Year)) +
+  geom_line(aes(color = Year))+
+  scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  xlab("Month")+
+  theme_classic())
+```
+
+
+### SWC
+
+```{r, echo=FALSE, message = FALSE, fig.width = 10, fig.height = 4}
+ggplotly(ggplot(input.daily, aes(jday, SWC, group = Year)) +
+  geom_line(aes(color = Year))+
+  xlab('Julian day of year') +
+  ylab('SWC %') +
+  theme_classic())
+```
