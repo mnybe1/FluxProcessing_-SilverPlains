@@ -94,7 +94,8 @@ input.daily <- input %>%
 ```{r Precipitation, echo=FALSE, message = FALSE, fig.width = 10, fig.height = 4}
 # this is the rainfall data for Interlaken estate, but there is a lot missing so results are probably underestimated
 # need to uodate this each month or so from BOM website
-input.bom.rain <- read.csv("R:/SET/PlantSci/Shared Work Spaces/Ecology/Peoples files/Marion Nyberg/PhD/SP warming experiment/Interlaken_BOM_rainfall.csv") %>% #filter(Year >= 2010 & Year <= 2019) %>% # used all years available due to missing data 1995 - 2021
+input.bom.rain <- read.csv("R:/SET/PlantSci/Shared Work Spaces/Ecology/Peoples files/Marion Nyberg/PhD/SP warming experiment/Interlaken_BOM_rainfall.csv") %>% filter(Year >= 2019)
+  #filter(Year >= 2010 & Year <= 2019) %>% # used all years available due to missing data 1995 - 2021
   select(Year, Month, Day, Rainfall.amount..millimetres.) %>%
   mutate(Precip = replace_na(Rainfall.amount..millimetres., 0)) %>%
   ddply(c("Year", "Month"), summarise,
@@ -162,4 +163,9 @@ ggplotly(ggplot(input.daily, aes(jday, SWC, group = Year)) +
   xlab('Julian day of year') +
   ylab('SWC %') +
   theme_classic())
+```
+
+```{r timeseries analysis}
+library(forecast)
+
 ```
