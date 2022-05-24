@@ -68,7 +68,7 @@ input$SWin <- ifelse(input$SWin < 0, NA, input$SWin)
 # add variables to this daily df as needed
 input.daily <- input %>%
   drop_na(Timestamp) %>% # some NAs in the Timestamp for some reason. Need to look into
-  ddply(c("Year", "jday"), summarise,
+  ddply(c("Year", "jday", "month"), summarise,
         Precip = sum(Precip, na.rm = TRUE),
         Ta.mean = mean(Ta, na.rm = TRUE),
         Ta.max = max(Ta, na.rm = TRUE),
