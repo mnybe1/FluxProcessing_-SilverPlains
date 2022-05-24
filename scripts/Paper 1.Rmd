@@ -92,19 +92,6 @@ input.daily <- input %>%
 ### Precipitation
 
 ```{r Precipitation, echo=FALSE, message = FALSE, fig.width = 10, fig.height = 4}
-# this is the rainfall data for Interlaken estate, but there is a lot missing so results are probably underestimated
-# need to uodate this each month or so from BOM website
-input.bom.rain <- read.csv("R:/SET/PlantSci/Shared Work Spaces/Ecology/Peoples files/Marion Nyberg/PhD/SP warming experiment/Interlaken_BOM_rainfall.csv") %>% filter(Year >= 2019)
-  #filter(Year >= 2010 & Year <= 2019) %>% # used all years available due to missing data 1995 - 2021
-  select(Year, Month, Day, Rainfall.amount..millimetres.) %>%
-  mutate(Precip = replace_na(Rainfall.amount..millimetres., 0)) %>%
-  ddply(c("Year", "Month"), summarise,
-  monthly.total = sum(Precip)) %>%
-  ddply(c("Month"), summarise,
-        monthly.total = mean(monthly.total)) 
-names(input.bom.rain)[1] <- "month"
-input.bom.rain$Year <- "BOMavg"
-
 input.daily %>% mutate(Precip = replace_na(Precip, 0)) %>%
   ddply(c("Year", "month"), summarise,
   monthly.total = sum(Precip)) %>%
@@ -114,6 +101,23 @@ input.daily %>% mutate(Precip = replace_na(Precip, 0)) %>%
   ylab("Monthly rainfall (mm)")+
   xlab("Month")+
   theme_classic()
+
+#below is precip data from liaweenee - it only goes up to Jan 2022 right now
+rainfall_L <- read.csv("R:/SET/PlantSci/Shared Work Spaces/Ecology/Peoples files/Marion Nyberg/PhD/Rainfall/rainfall.csv")
+rainfall_L <- rainfall_L[-1]
+colnames(rainfall_L)[4] <- "Precip"
+rainfall_L$Year <- as.factor(rainfall_L$Year)
+
+rainfall_L %>% mutate(Precip = replace_na(Precip, 0)) %>%
+  ddply(c("Year", "Month"), summarise,
+  monthly.total = sum(Precip)) %>%
+  ggplot(., aes(x = Month, y = monthly.total, group = Year, fill = Year)) +
+       scale_x_discrete(limits = month.abb) +
+  geom_col(position = "dodge") + 
+  ylab("Monthly rainfall (mm)")+
+  xlab("Month")+
+  theme_classic()
+
 ```
 
 Total monthly precipitation at Silver Plains. The BOM average is data from the Interlaken Estate (1995-2021), however, there are multiple missing values, so results may be underestimated.
