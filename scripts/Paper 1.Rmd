@@ -107,6 +107,10 @@ rainfall_L <- read.csv("R:/SET/PlantSci/Shared Work Spaces/Ecology/Peoples files
 rainfall_L <- rainfall_L[-1]
 colnames(rainfall_L)[4] <- "Precip"
 rainfall_L$Year <- as.factor(rainfall_L$Year)
+rainfall_L <- rainfall_L %>% filter(Year == 2019)
+colnames(rainfall_L)[3] <- "jday"
+colnames(rainfall_L)[2] <- "month"
+rainfall_L$Site <- "L"
 
 rainfall_L %>% mutate(Precip = replace_na(Precip, 0)) %>%
   ddply(c("Year", "Month"), summarise,
@@ -118,9 +122,13 @@ rainfall_L %>% mutate(Precip = replace_na(Precip, 0)) %>%
   xlab("Month")+
   theme_classic()
 
-```
+rainfall.SP <- input.daily %>% select(Precip, jday, month, Year)
+rainfall.SP$Site <- "SP"
 
-Total monthly precipitation at Silver Plains. The BOM average is data from the Interlaken Estate (1995-2021), however, there are multiple missing values, so results may be underestimated.
+rainfall <- rbind(rainfall_L, rainfall.SP)
+  
+
+```
 
 
 ### Air and soil temperature
@@ -130,9 +138,7 @@ Mean daily air temperature (top) and monthly (bottom)
 Mean daily air temperature
 
 ```{r Air temperature, echo=FALSE, message = FALSE, fig.width = 10, fig.height = 4}
-ggplotly(ggplot(input.daily, aes(x = jday, y = Ts, group = Year)) +
-  geom_line(aes(color = Year))+
-  theme_classic())
+
 
 ggplotly(ggplot(input.daily, aes(x = jday, y = Ta.mean, group = Year)) +
   geom_line(aes(color = Year))+
