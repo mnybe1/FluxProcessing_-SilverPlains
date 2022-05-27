@@ -6,11 +6,11 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-library(dplyr)
 library(data.table)
 library(janitor)
 library(plotly)
 library(plyr)
+library(dplyr)
 library(knitr)
 library(tidyverse)
 #library(devtools)
@@ -19,6 +19,7 @@ library(tidyr)
 library(naniar)
 library(forecast)
 library(kableExtra)
+library(htmltools)
 
 rm(list = ls())
 wd <- ("R:/SET/PlantSci/Shared Work Spaces/Ecology/Flux/SP_data")
@@ -182,24 +183,39 @@ rainfall$season <- "" # add season variable
 # define seasons
 winter <- (rainfall$month == "6" | rainfall$month == "7" | rainfall$month == "8")
 spring <- (rainfall$month == "9" | rainfall$month == "10" | rainfall$month == "11")
-summer <- (rainfall$month == "12" | rainfall$month == "1" | rainfall$month == "2")
+earlysummer <- (rainfall$month == "12")
+latesummer <- (rainfall$month == "1" | rainfall$month == "2")
 autumn <- (rainfall$month == "3" | rainfall$month == "4" | rainfall$month == "5")
 
 rainfall$season[winter] <- "Winter"
 rainfall$season[spring] <- "Spring"
-rainfall$season[summer] <- "Summer"
+rainfall$season[earlysummer] <- "EarlySummer"
+rainfall$season[latesummer] <- "LateSummer"
 rainfall$season[autumn] <- "Autumn"
 
-season_levelorder <-  c('Summer', 'Autumn', 'Winter', 'Spring') 
+rainfall$season <- factor(rainfall$season , levels=c('EarlySummer','LateSummer', 'Autumn', 'Winter', 'Spring'))
 
-rainfall$season <- factor(rainfall$season , levels=c('Summer', 'Autumn', 'Winter', 'Spring'))
+input.daily$season <- "" # add season variable
+
+# define seasons
+winter <- (input.daily$month == "6" | input.daily$month == "7" | input.daily$month == "8")
+spring <- (input.daily$month == "9" | input.daily$month == "10" | input.daily$month == "11")
+earlysummer <- (input.daily$month == "12")
+latesummer <- (input.daily$month == "1" | input.daily$month == "2")
+autumn <- (input.daily$month == "3" | input.daily$month == "4" | input.daily$month == "5")
+
+input.daily$season[winter] <- "Winter"
+input.daily$season[spring] <- "Spring"
+input.daily$season[earlysummer] <- "EarlySummer"
+input.daily$season[latesummer] <- "LateSummer"
+input.daily$season[autumn] <- "Autumn"
+
+input.daily$season <- factor(input.daily$season , levels=c('EarlySummer','LateSummer', 'Autumn', 'Winter', 'Spring'))
 ```
 
 ```{r create rainfall summary}
 rainfall.summary <- rainfall %>% ddply(c("Year", "Site", "season"), summarise,
                                        seasonal.sum = sum(Precip, na.rm = TRUE))
-
-rainfall.summary %>% kbl() %>% kable_styling()
 
 rainfall.summary %>% 
   ggplot(., aes(x = season, y = seasonal.sum, group = Year, fill = Site)) +
@@ -209,7 +225,21 @@ rainfall.summary %>%
   theme_classic()
 
 ```
+```{r seasonal NEE}
+NEE.summary <- input.daily %>% ddply(c("Year", "season", "jday"), summarise,
+                                       seasonal.sum = cumsum(NEE_LT.gC))
 
+# check when switches from sink to source
+
+input.daily %>% select(jday, NEE_LT.gC, Year) %>%
+  ggplot(., aes(jday, NEE_LT.gC)) +
+  geom_line(aes(colour = Year))
+
+NEE.summary %>%
+  ggplot(., aes(jday, seasonal.sum)) +
+  geom_line(aes(colour = Year))
+
+```
 
 ```{r timeseries analysis}
 library(forecast)
