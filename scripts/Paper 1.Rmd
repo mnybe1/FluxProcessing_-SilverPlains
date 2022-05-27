@@ -18,6 +18,7 @@ library(openair)
 library(tidyr)
 library(naniar)
 library(forecast)
+library(kableExtra)
 
 rm(list = ls())
 wd <- ("R:/SET/PlantSci/Shared Work Spaces/Ecology/Flux/SP_data")
@@ -197,6 +198,9 @@ rainfall$season <- factor(rainfall$season , levels=c('Summer', 'Autumn', 'Winter
 ```{r create rainfall summary}
 rainfall.summary <- rainfall %>% ddply(c("Year", "Site", "season"), summarise,
                                        seasonal.sum = sum(Precip, na.rm = TRUE))
+
+rainfall.summary %>% kbl() %>% kable_styling()
+
 rainfall.summary %>% 
   ggplot(., aes(x = season, y = seasonal.sum, group = Year, fill = Site)) +
   geom_col(position = "dodge", aes(fill = Year)) + 
