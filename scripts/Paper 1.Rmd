@@ -17,6 +17,7 @@ library(tidyverse)
 library(openair)
 library(tidyr)
 library(naniar)
+library(forecast)
 
 rm(list = ls())
 wd <- ("R:/SET/PlantSci/Shared Work Spaces/Ecology/Flux/SP_data")
@@ -113,13 +114,13 @@ colnames(rainfall_L)[2] <- "month"
 rainfall_L$Site <- "L"
 
 rainfall_L %>% mutate(Precip = replace_na(Precip, 0)) %>%
-  ddply(c("Year", "Month"), summarise,
+  ddply(c("Year", "month"), summarise,
   monthly.total = sum(Precip)) %>%
-  ggplot(., aes(x = Month, y = monthly.total, group = Year, fill = Year)) +
+  ggplot(., aes(x = month, y = monthly.total, group = Year, fill = Year)) +
        scale_x_discrete(limits = month.abb) +
   geom_col(position = "dodge") + 
   ylab("Monthly rainfall (mm)")+
-  xlab("Month")+
+  xlab("month")+
   theme_classic()
 
 rainfall.SP <- input.daily %>% select(Precip, jday, month, Year)
@@ -138,8 +139,6 @@ Mean daily air temperature (top) and monthly (bottom)
 Mean daily air temperature
 
 ```{r Air temperature, echo=FALSE, message = FALSE, fig.width = 10, fig.height = 4}
-
-
 ggplotly(ggplot(input.daily, aes(x = jday, y = Ta.mean, group = Year)) +
   geom_line(aes(color = Year))+
      geom_ribbon(aes(ymin=Ta.min, ymax=Ta.max), alpha=.3, linetype=0) +
@@ -175,7 +174,39 @@ ggplotly(ggplot(input.daily, aes(jday, SWC, group = Year)) +
   theme_classic())
 ```
 
+
+```{r add seasons, include=FALSE}
+rainfall$season <- "" # add season variable
+
+# define seasons
+winter <- (rainfall$month == "6" | rainfall$month == "7" | rainfall$month == "8")
+spring <- (rainfall$month == "9" | rainfall$month == "10" | rainfall$month == "11")
+summer <- (rainfall$month == "12" | rainfall$month == "1" | rainfall$month == "2")
+autumn <- (rainfall$month == "3" | rainfall$month == "4" | rainfall$month == "5")
+
+rainfall$season[winter] <- "Winter"
+rainfall$season[spring] <- "Spring"
+rainfall$season[summer] <- "Summer"
+rainfall$season[autumn] <- "Autumn"
+
+season_levelorder <-  c('Summer', 'Autumn', 'Winter', 'Spring') 
+
+rainfall$season <- factor(rainfall$season , levels=c('Summer', 'Autumn', 'Winter', 'Spring'))
+```
+
+```{r create rainfall summary}
+rainfall.summary <- rainfall %>% ddply(c("Year", "Site", "season"), summarise,
+                                       seasonal.sum = sum(Precip, na.rm = TRUE))
+rainfall.summary %>% 
+  ggplot(., aes(x = season, y = seasonal.sum, group = Year, fill = Site)) +
+  geom_col(position = "dodge", aes(fill = Year)) + 
+  ylab("Monthly rainfall (mm)")+
+  xlab("month")+
+  theme_classic()
+
+```
+
+
 ```{r timeseries analysis}
 library(forecast)
-
 ```
