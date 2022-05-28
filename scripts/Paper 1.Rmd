@@ -20,6 +20,9 @@ library(naniar)
 library(forecast)
 library(kableExtra)
 library(htmltools)
+library(ggpubr)
+library(rstatix)
+library(broom)
 
 rm(list = ls())
 wd <- ("R:/SET/PlantSci/Shared Work Spaces/Ecology/Flux/SP_data")
@@ -61,6 +64,7 @@ input$jday <-yday(input$Timestamp) # add jday
 input$Year <- year(input$Timestamp) # extract year
 input$Year <- as.factor(input$Year) # convert year from integer to factor
 input$month <- month(as.POSIXct(input$Timestamp)) # extract month
+input$month <- as.factor(input$month)
 ```
 
 ```{r weird stuff in data filtered out}
@@ -129,7 +133,7 @@ rainfall.SP <- input.daily %>% select(Precip, jday, month, Year)
 rainfall.SP$Site <- "SP"
 
 rainfall <- rbind(rainfall_L, rainfall.SP)
-  
+rainfall$month <- as.factor(rainfall$month)  
 
 ```
 
@@ -214,22 +218,41 @@ input.daily$season <- factor(input.daily$season , levels=c('EarlySummer','LateSu
 ```
 
 ```{r create rainfall summary}
-rainfall.summary <- rainfall %>% ddply(c("Year", "Site", "season"), summarise,
-                                       seasonal.sum = sum(Precip, na.rm = TRUE))
+rainfall.summary <- rainfall %>% ddply(c("Year", "Site", "month"), summarise,
+                                       monthly.sum = sum(Precip, na.rm = TRUE))
 
 rainfall.summary %>% 
-  ggplot(., aes(x = season, y = seasonal.sum, group = Year, fill = Site)) +
+  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
   geom_col(position = "dodge", aes(fill = Year)) + 
   ylab("Monthly rainfall (mm)")+
   xlab("month")+
   theme_classic()
 
+rainfall.summary %>% 
+  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
+  geom_point(aes(color = Year, size = 2)) + 
+  ylab("Monthly rainfall (mm)")+
+  xlab("month")+
+  theme_classic()
+
+
+
 ```
+
+
 ```{r seasonal NEE}
-NEE.summary <- input.daily %>% ddply(c("Year", "season", "jday"), summarise,
-                                       seasonal.sum = cumsum(NEE_LT.gC))
+NEE.summary <- input.daily %>% ddply(c("month", "Year"), summarise,
+                                       monthly.sum = sum(NEE_LT.gC))
+
 
 # check when switches from sink to source
+
+NEE.summary %>% 
+  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
+  geom_col(position = "dodge", aes(fill = Year)) + 
+  ylab("Monthly rainfall (mm)")+
+  xlab("month")+
+  theme_classic()
 
 input.daily %>% select(jday, NEE_LT.gC, Year) %>%
   ggplot(., aes(jday, NEE_LT.gC)) +
@@ -242,5 +265,18 @@ NEE.summary %>%
 ```
 
 ```{r timeseries analysis}
-library(forecast)
+tsData <- EuStockMarkets[, 1] # ts data
+decomposedRes <- decompose(tsData, type="mult") # use type = "additive" for additive components
+plot (decomposedRes) # see plot below
+stlRes <- stl(tsData, s.window = "periodic")
+
+
+input.daily %>% anova_test(NEE_LT.gC~Precip+season)
+
+rainfall$TS <- as.Date(with(rainfall, paste(Year, month, jday,sep="-")), "%Y-%m-%d")
+
+TSData <- rainfall[, 1] # ts data
+decomposedRes <- decompose(tsData, type="mult") # use type = "additive" for additive components
+plot (decomposedRes) # see plot below
+stlRes <- stl(tsData, s.window = "periodic")
 ```
