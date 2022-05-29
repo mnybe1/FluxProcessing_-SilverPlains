@@ -229,6 +229,9 @@ input.daily$season <- factor(input.daily$season , levels=c('EarlySummer','LateSu
 rainfall.summary <- rainfall %>% ddply(c("Year", "Site", "month"), summarise,
                                        monthly.sum = sum(Precip, na.rm = TRUE))
 
+rainfall%>% ddply(c("Year", "season"), summarise,
+                    seasonal.sum = sum(Precip, na.rm = TRUE))
+
 rainfall.summary %>% 
   ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
   geom_col(position = "dodge", aes(fill = Year)) + 
@@ -239,27 +242,38 @@ rainfall.summary %>%
 
 
 ```{r seasonal NEE}
-NEE.summary <- input.daily %>% ddply(c("month", "Year"), summarise,
+NEE.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
                                        monthly.sum = sum(NEE_LT.gC))
 
+GPP.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
+                                       monthly.sum = sum(GPP_LT.gC))
+
+ER.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
+                                       monthly.sum = sum(ER_LT.gC))
 
 # check when switches from sink to source
 
 NEE.summary %>% 
   ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
   geom_col(position = "dodge", aes(fill = Year)) + 
-  ylab("Monthly rainfall (mm)")+
+  ylab("Monthly NEE")+
   xlab("month")+
   theme_classic()
 
-input.daily %>% select(jday, NEE_LT.gC, Year) %>%
-  ggplot(., aes(jday, NEE_LT.gC)) +
-  geom_line(aes(colour = Year))
 
-NEE.summary %>%
-  ggplot(., aes(jday, seasonal.sum)) +
-  geom_line(aes(colour = Year))
+GPP.summary %>%
+  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
+  geom_col(position = "dodge", aes(fill = Year)) + 
+  ylab("Monthly GPP")+
+  xlab("month")+
+  theme_classic()
 
+ER.summary %>%
+  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
+  geom_col(position = "dodge", aes(fill = Year)) + 
+  ylab("Monthly ER")+
+  xlab("month")+
+  theme_classic()
 ```
 
 ```{r create new dataframe for timeseries analysis}
