@@ -133,9 +133,15 @@ rainfall_L %>% mutate(Precip = replace_na(Precip, 0)) %>%
 
 rainfall.SP <- input.daily %>% select(Precip, jday, month, Year)
 rainfall.SP$Site <- "SP"
+rainfall.SP$date <- as.Date(with(rainfall.SP, paste(Year, month, jday,sep="-")), "%Y-%m-%j")
+rainfall.2merge <- rainfall_L %>% filter(Year == 2019  & jday >= 244 & jday < 354)
 
-rainfall <- rbind(rainfall_L, rainfall.SP)
+
+
+rainfall <- rbind.fill(rainfall.2merge, rainfall.SP)
 rainfall$month <- as.factor(rainfall$month)  
+
+
 
 ```
 
@@ -229,16 +235,6 @@ rainfall.summary %>%
   ylab("Monthly rainfall (mm)")+
   xlab("month")+
   theme_classic()
-
-rainfall.summary %>% 
-  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
-  geom_point(aes(color = Year, size = 2)) + 
-  ylab("Monthly rainfall (mm)")+
-  xlab("month")+
-  theme_classic()
-
-
-
 ```
 
 
