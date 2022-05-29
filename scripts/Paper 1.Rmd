@@ -115,9 +115,11 @@ rainfall_L <- rainfall_L[-1]
 colnames(rainfall_L)[4] <- "Precip"
 rainfall_L$Year <- as.factor(rainfall_L$Year)
 rainfall_L <- rainfall_L %>% filter(Year == 2019)
-colnames(rainfall_L)[3] <- "jday"
+colnames(rainfall_L)[3] <- "day"
 colnames(rainfall_L)[2] <- "month"
 rainfall_L$Site <- "L"
+rainfall_L$date <- as.Date(with(rainfall_L, paste(Year, month, day,sep="-")), "%Y-%m-%d")
+rainfall_L$jday <- yday(rainfall_L$date)
 
 rainfall_L %>% mutate(Precip = replace_na(Precip, 0)) %>%
   ddply(c("Year", "month"), summarise,
@@ -264,6 +266,25 @@ NEE.summary %>%
 
 ```
 
+```{r create new dataframe for timeseries analysis}
+rainfall.2merge <- rainfall %>% filter(Year == 2019  & jday < 354)
+input.daily$Site <- "SP"
+
+tsData <- rbind.fill(rainfall.2merge, input.daily) %>% 
+  select(Year, month, jday, Precip, NEE_LT.gC, ER_LT.gC, GPP_LT.gC) %>%
+  mutate(
+    NEE2weeks = lag(NEE_LT.gC, n = 14, default = NA)
+  )
+
+tsData$date <- as.Date(with(tsData, paste(Year, month, jday,sep="-")), "%Y-%m-%d")
+lm1 <- lm(NEE2weeks~Precip, tsData)
+summary(lm1)
+
+lm2 <- lm(NEE_LT.gC~Precip, tsData)
+summary(lm2)
+```
+
+
 ```{r timeseries analysis}
 tsData <- EuStockMarkets[, 1] # ts data
 decomposedRes <- decompose(tsData, type="mult") # use type = "additive" for additive components
@@ -275,8 +296,4 @@ input.daily %>% anova_test(NEE_LT.gC~Precip+season)
 
 rainfall$TS <- as.Date(with(rainfall, paste(Year, month, jday,sep="-")), "%Y-%m-%d")
 
-TSData <- rainfall[, 1] # ts data
-decomposedRes <- decompose(tsData, type="mult") # use type = "additive" for additive components
-plot (decomposedRes) # see plot below
-stlRes <- stl(tsData, s.window = "periodic")
 ```
