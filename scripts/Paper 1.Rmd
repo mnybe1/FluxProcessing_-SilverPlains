@@ -251,6 +251,10 @@ GPP.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
 ER.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
                                        monthly.sum = sum(ER_LT.gC))
 
+
+Ts.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
+                                       monthly.mean = mean(Ts.mean))
+
 # check when switches from sink to source
 
 NEE.summary %>% 
@@ -270,6 +274,13 @@ GPP.summary %>%
 
 ER.summary %>%
   ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
+  geom_col(position = "dodge", aes(fill = Year)) + 
+  ylab("Monthly ER")+
+  xlab("month")+
+  theme_classic()
+
+Ts.summary %>%
+  ggplot(., aes(x = month, y = monthly.mean, group = Year, fill = Site)) +
   geom_col(position = "dodge", aes(fill = Year)) + 
   ylab("Monthly ER")+
   xlab("month")+
