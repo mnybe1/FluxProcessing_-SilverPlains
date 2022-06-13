@@ -103,7 +103,7 @@ input.daily %>% mutate(Precip = replace_na(Precip, 0)) %>%
   ddply(c("Year", "month"), summarise,
   monthly.total = sum(Precip)) %>%
   ggplot(., aes(x = month, y = monthly.total, group = Year, fill = Year)) +
-       scale_x_discrete(limits = month.abb) +
+       #scale_x_discrete(limits = month.abb) +
   geom_col(position = "dodge") + 
   ylab("Monthly rainfall (mm)")+
   xlab("Month")+
@@ -133,7 +133,18 @@ rainfall.SP <- input.daily %>% select(Precip, jday, month, Year)
 rainfall.SP$Site <- "SP"
 
 rainfall <- rbind(rainfall_L, rainfall.SP)
-rainfall$month <- as.factor(rainfall$month)  
+rainfall$month <- as.factor(rainfall$month) 
+rainfall$month <- month.abb[rainfall$month]
+
+rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
+  ddply(c("Year", "month"), summarise,
+  monthly.total = sum(Precip)) %>%
+  ggplot(., aes(x = month, y = monthly.total, group = Year, fill = Year)) +
+       scale_x_discrete(limits = month.abb) +
+  geom_col(position = "dodge") + 
+  ylab("Monthly rainfall (mm)")+
+  xlab("Month")+
+  theme_classic()
 
 ```
 
@@ -258,11 +269,37 @@ input.daily %>% select(jday, NEE_LT.gC, Year) %>%
   ggplot(., aes(jday, NEE_LT.gC)) +
   geom_line(aes(colour = Year))
 
-NEE.summary %>%
-  ggplot(., aes(jday, seasonal.sum)) +
-  geom_line(aes(colour = Year))
 
 ```
+
+```{r cumulative fluxes}
+
+cumulative.co2fluxes <- input %>%
+  drop_na(Timestamp) %>% # some NAs in the Timestamp for some reason. Need to look into
+  ddply(c("Year", "jday", "month", "season"), summarise,
+        Fco2 = gofC.f(mean(Fco2, na.rm = TRUE)),
+        ER = gofC.f(mean(ER_SOLO, na.rm = TRUE)),
+        GPP = gofC.f(mean(GPP_SOLO, na.rm = TRUE)))
+
+input.co2fluxes$GPP <- ifelse(input.co2fluxes$GPP < 0 , NA, input.co2fluxes$GPP) # for some reason there were values < 0 for GPP
+
+input.co2fluxes$ERcum_year <- as.numeric(unlist(tapply(input.co2fluxes$ER, input.co2fluxes$Year, cumsum)))
+input.co2fluxes$NEEcum_year <- as.numeric(unlist(tapply(input.co2fluxes$Fco2, input.co2fluxes$Year, cumsum)))
+input.co2fluxes$GPPcum_year <- as.numeric(unlist(tapply(input.co2fluxes$GPP, input.co2fluxes$Year, cumsum)))
+
+input.co2fluxes$GPP<- ifelse(is.na(input.co2fluxes$GPP), "0", input.co2fluxes$GPP) # replace NA with 0 for cumsum
+
+
+
+
+(NEE <- plot_ly(input.co2fluxes, x = ~jday, y = ~NEEcum_year, split = ~Year, name = ~Year, type = 'scatter', mode = 'lines'))
+
+(ER <- plot_ly(input.co2fluxes, x = ~jday, y = ~ERcum_year, split = ~Year, name = ~Year, type = 'scatter', mode = 'lines'))
+
+(GPP <- plot_ly(input.co2fluxes, x = ~jday, y = ~GPPcum_year, split = ~Year, name = ~Year, type = 'scatter', mode = 'lines'))
+
+```
+
 
 ```{r timeseries analysis}
 tsData <- EuStockMarkets[, 1] # ts data
