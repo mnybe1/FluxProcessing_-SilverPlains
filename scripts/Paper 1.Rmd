@@ -23,6 +23,9 @@ library(htmltools)
 library(ggpubr)
 library(rstatix)
 library(broom)
+library(gtable)
+library(gridExtra)
+library(cowplot)
 
 rm(list = ls())
 wd <- ("R:/SET/PlantSci/Shared Work Spaces/Ecology/Flux/SP_data")
@@ -92,14 +95,19 @@ input.daily <- input %>%
   mutate(NEE_LT.gC = gofC.f(NEE_LT),  #converts to daily total NEE in g C CO2
          ER_LT.gC = gofC.f(ER_LT),
          GPP_LT.gC = gofC.f(GPP_LT))
+
+input.daily$month <- as.numeric(input.daily$month) 
+input.daily$month <- month.abb[input.daily$month]
+
 ```
 
 ## Results {.tabset}
 
 ### Precipitation
 
-```{r Precipitation, echo=FALSE, message = FALSE, fig.width = 10, fig.height = 4}
-input.daily %>% mutate(Precip = replace_na(Precip, 0)) %>%
+```{r Precipitation, echo=FALSE, message = FALSE, fig.width = 8, fig.height = 4}
+
+(SP.rain <- input.daily %>% mutate(Precip = replace_na(Precip, 0)) %>%
   ddply(c("Year", "month"), summarise,
   monthly.total = sum(Precip)) %>%
   ggplot(., aes(x = month, y = monthly.total, group = Year, fill = Year)) +
@@ -107,17 +115,24 @@ input.daily %>% mutate(Precip = replace_na(Precip, 0)) %>%
   geom_col(position = "dodge") + 
   ylab("Monthly rainfall (mm)")+
   xlab("Month")+
-  theme_classic()
+   scale_x_discrete(limits = month.abb) +
+  theme_classic()+
+  theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14)))
+
 
 #below is precip data from liaweenee - it only goes up to Jan 2022 right now
 rainfall_L <- read.csv("R:/SET/PlantSci/Shared Work Spaces/Ecology/Peoples files/Marion Nyberg/PhD/Rainfall/rainfall.csv")
-rainfall_L <- rainfall_L[-1]
-colnames(rainfall_L)[4] <- "Precip"
+rainfall_L <- rainfall_L[-4]
+colnames(rainfall_L)[5] <- "Precip"
 rainfall_L$Year <- as.factor(rainfall_L$Year)
 rainfall_L <- rainfall_L %>% filter(Year == 2019)
-colnames(rainfall_L)[3] <- "jday"
-colnames(rainfall_L)[2] <- "month"
+colnames(rainfall_L)[1] <- "jday"
+colnames(rainfall_L)[3] <- "month"
 rainfall_L$Site <- "L"
+rainfall_L <- rainfall_L %>% filter(month >= 9)
 
 rainfall_L %>% mutate(Precip = replace_na(Precip, 0)) %>%
   ddply(c("Year", "month"), summarise,
@@ -133,8 +148,8 @@ rainfall.SP <- input.daily %>% select(Precip, jday, month, Year)
 rainfall.SP$Site <- "SP"
 
 rainfall <- rbind(rainfall_L, rainfall.SP)
-rainfall$month <- as.factor(rainfall$month) 
-rainfall$month <- month.abb[rainfall$month]
+rainfall$month <- as.numeric(rainfall$month) 
+rainfall$month.abb <- month.abb[rainfall$month]
 
 rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
   ddply(c("Year", "month"), summarise,
@@ -144,7 +159,12 @@ rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
   geom_col(position = "dodge") + 
   ylab("Monthly rainfall (mm)")+
   xlab("Month")+
-  theme_classic()
+  theme_classic()+
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14))
+
 
 ```
 
@@ -155,11 +175,28 @@ rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
 Mean daily air temperature (top) and monthly (bottom)
 Mean daily air temperature
 
-```{r Air temperature, echo=FALSE, message = FALSE, fig.width = 10, fig.height = 4}
-ggplotly(ggplot(input.daily, aes(x = jday, y = Ta.mean, group = Year)) +
-  geom_line(aes(color = Year))+
-     geom_ribbon(aes(ymin=Ta.min, ymax=Ta.max), alpha=.3, linetype=0) +
-  theme_classic())
+```{r Air temperature, echo=FALSE, message = FALSE, fig.width = 8, fig.height = 4}
+TA <- ggplot(input.daily, aes(x = jday, y = Ta.mean, group = Year)) +
+  geom_line(aes(color = Year), size =1)+
+    xlab("Julian day of year")+
+    ylab("Air temperature (°C)")+
+     #geom_ribbon(aes(ymin=Ta.min, ymax=Ta.max), alpha=.3, linetype=0) +
+  theme_classic()+
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14))
+
+(TS <- ggplot(input.daily, aes(x = jday, y = Ts.mean, group = Year)) +
+  geom_line(aes(color = Year), size =1)+
+    xlab("Julian day of year")+
+    ylab("Soil temperature (°C)")+
+     #geom_ribbon(aes(ymin=Ta.min, ymax=Ta.max), alpha=.3, linetype=0) +
+  theme_classic()+
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14)))
 
 ggplotly(ggplot(input.daily, aes(x = jday, y = Ta.max, group = Year)) +
   geom_line(aes(color = Year))+
@@ -183,14 +220,35 @@ ggplotly(ggplot(input.daily, aes(x = as.Date(jday, origin = ("2020-01-01")), y =
 
 ### SWC
 
-```{r, echo=FALSE, message = FALSE, fig.width = 10, fig.height = 4}
-ggplotly(ggplot(input.daily, aes(jday, SWC, group = Year)) +
-  geom_line(aes(color = Year))+
+```{r, echo=FALSE, message = FALSE, fig.width = 8, fig.height = 4}
+SWC <- ggplot(input.daily, aes(jday, SWC, group = Year)) +
+  geom_line(aes(color = Year), size = 1.5)+
   xlab('Julian day of year') +
   ylab('SWC %') +
-  theme_classic())
+  theme_classic() + 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14))
 ```
 
+
+
+```{r, fig.width = 10, fig.height = 6}
+Legend.met<- get_legend(SP.rain+ theme(legend.position = 'right'))
+
+Fig1 <- plot_grid(SP.rain + theme(legend.position="none"), TA+ theme(legend.position="none"),
+             SWC+ theme(legend.position="none"), TS+ theme(legend.position="none"), ncol = 2, rel_heights = c(0.5, 0.5, 0.5, 0.5))
+
+
+Fig1
+tiff("Fig1.tiff", units="in", width=10, height=6,  res=300)
+print(Fig1)
+dev.off()
+
+
+Legend.met
+```
 
 ```{r add seasons, include=FALSE}
 rainfall$season <- "" # add season variable
@@ -301,19 +359,3 @@ input.co2fluxes$GPP<- ifelse(is.na(input.co2fluxes$GPP), "0", input.co2fluxes$GP
 ```
 
 
-```{r timeseries analysis}
-tsData <- EuStockMarkets[, 1] # ts data
-decomposedRes <- decompose(tsData, type="mult") # use type = "additive" for additive components
-plot (decomposedRes) # see plot below
-stlRes <- stl(tsData, s.window = "periodic")
-
-
-input.daily %>% anova_test(NEE_LT.gC~Precip+season)
-
-rainfall$TS <- as.Date(with(rainfall, paste(Year, month, jday,sep="-")), "%Y-%m-%d")
-
-TSData <- rainfall[, 1] # ts data
-decomposedRes <- decompose(tsData, type="mult") # use type = "additive" for additive components
-plot (decomposedRes) # see plot below
-stlRes <- stl(tsData, s.window = "periodic")
-```
