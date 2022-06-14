@@ -148,7 +148,6 @@ rainfall_L %>% mutate(Precip = replace_na(Precip, 0)) %>%
 
 rainfall.SP <- input.daily %>% select(Precip, jday, month, Year)
 rainfall.SP$Site <- "SP"
-
 rainfall <- rbind(rainfall_L, rainfall.SP)
 
 rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
@@ -164,6 +163,11 @@ rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
           axis.text = element_text(size = 13),
           legend.text = element_text(size = 13),
           legend.title = element_text(size = 14))
+
+
+
+rainfall <- rbind.fill(rainfall.2merge, rainfall.SP)
+rainfall$month <- as.factor(rainfall$month)  
 
 
 ```
@@ -290,52 +294,64 @@ input.daily$season <- factor(input.daily$season , levels=c('EarlySummer','LateSu
 rainfall.summary <- rainfall %>% ddply(c("Year", "Site", "month"), summarise,
                                        monthly.sum = sum(Precip, na.rm = TRUE))
 
+rainfall%>% ddply(c("Year", "season"), summarise,
+                    seasonal.sum = sum(Precip, na.rm = TRUE))
+
 rainfall.summary %>% 
   ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
   geom_col(position = "dodge", aes(fill = Year)) + 
   ylab("Monthly rainfall (mm)")+
   xlab("month")+
   theme_classic()
-
-rainfall.summary %>% 
-  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
-  geom_point(aes(color = Year, size = 2)) + 
-  ylab("Monthly rainfall (mm)")+
-  xlab("month")+
-  theme_classic()
-
-
-
 ```
 
 
 ```{r seasonal NEE}
-NEE.summary <- input.daily %>% ddply(c("month", "Year"), summarise,
+NEE.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
                                        monthly.sum = sum(NEE_LT.gC))
 
+GPP.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
+                                       monthly.sum = sum(GPP_LT.gC))
+
+ER.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
+                                       monthly.sum = sum(ER_LT.gC))
+
+
+Ts.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
+                                       monthly.mean = mean(Ts.mean))
 
 # check when switches from sink to source
 
 NEE.summary %>% 
   ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
   geom_col(position = "dodge", aes(fill = Year)) + 
-  ylab("Monthly rainfall (mm)")+
+  ylab("Monthly NEE")+
   xlab("month")+
   theme_classic()
 
-input.daily %>% select(jday, NEE_LT.gC, Year) %>%
-  ggplot(., aes(jday, NEE_LT.gC)) +
-  geom_line(aes(colour = Year))
+GPP.summary %>%
+  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
+  geom_col(position = "dodge", aes(fill = Year)) + 
+  ylab("Monthly GPP")+
+  xlab("month")+
+  theme_classic()
 
+ER.summary %>%
+  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
+  geom_col(position = "dodge", aes(fill = Year)) + 
+  ylab("Monthly ER")+
+  xlab("month")+
+  theme_classic()
 
+Ts.summary %>%
+  ggplot(., aes(x = month, y = monthly.mean, group = Year, fill = Site)) +
+  geom_col(position = "dodge", aes(fill = Year)) + 
+  ylab("Monthly ER")+
+  xlab("month")+
+  theme_classic()
 ```
 
 ```{r cumulative fluxes}
-
 cum.co2fluxes <- input.daily %>%
-  ddply(c("Year", "jday", "month"), summarise,
-        Fco2 = gofC.f(mean(NEE_LT.gC, na.rm = TRUE)),
-        ER = gofC.f(mean(ER_LT.gC, na.rm = TRUE)),
-        GPP = gofC.f(mean(GPP_LT.gC, na.rm = TRUE)))
-
+  select(NEE_LT.gC, GPP_LT.gC, ER_LT.gC, jday, Year, month)
 ```
