@@ -165,11 +165,6 @@ rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
           legend.title = element_text(size = 14))
 
 
-
-rainfall <- rbind.fill(rainfall.2merge, rainfall.SP)
-rainfall$month <- as.factor(rainfall$month)  
-
-
 ```
 
 
@@ -225,7 +220,7 @@ ggplotly(ggplot(input.daily, aes(x = as.Date(jday, origin = ("2020-01-01")), y =
 ### SWC
 
 ```{r, echo=FALSE, message = FALSE, fig.width = 8, fig.height = 4}
-SWC <- ggplot(input.daily, aes(jday, SWC, group = Year)) +
+(SWC <- ggplot(input.daily, aes(jday, SWC, group = Year)) +
   geom_line(aes(color = Year), size = 1.5)+
   xlab('Julian day of year') +
   ylab('SWC %') +
@@ -233,7 +228,7 @@ SWC <- ggplot(input.daily, aes(jday, SWC, group = Year)) +
     theme(axis.title = element_text(size = 14),
           axis.text = element_text(size = 13),
           legend.text = element_text(size = 13),
-          legend.title = element_text(size = 14))
+          legend.title = element_text(size = 14)))
 ```
 
 
@@ -325,6 +320,8 @@ Ts.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
 NEE.summary %>% 
   ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
   geom_col(position = "dodge", aes(fill = Year)) + 
+         scale_x_discrete(limits = month.abb) +
+
   ylab("Monthly NEE")+
   xlab("month")+
   theme_classic()
@@ -351,7 +348,74 @@ Ts.summary %>%
   theme_classic()
 ```
 
-```{r cumulative fluxes}
+```{r cumulative fluxes, fig.width = 10, fig.height = 6}
 cum.co2fluxes <- input.daily %>%
-  select(NEE_LT.gC, GPP_LT.gC, ER_LT.gC, jday, Year, month)
+  select(NEE_LT.gC, GPP_LT.gC, ER_LT.gC, jday, Year, month) %>% 
+  group_by(Year) %>% 
+  mutate(NEEcum = cumsum(NEE_LT.gC),
+         GPPcum = cumsum(GPP_LT.gC),
+         ERcum = cumsum(ER_LT.gC))
+
+(NEEcum.p <-cum.co2fluxes %>% 
+  ggplot(., aes(jday, NEEcum, color = Year)) +
+  geom_line(size = 1)+
+  ylab(bquote('Cumulative NEE (g C' ~m^-2~')'))+
+  xlab("Julian day of year")+
+  theme_classic()+ 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.position = "none"))
+
+(NEE.time <- input.daily %>% 
+  ggplot(., aes(jday, NEE_LT.gC, color = Year)) +
+  geom_line(size = 1)+
+  ylab(bquote('Cumulative NEE (g C' ~m^-2~ day^-1*')'))+
+  xlab("Julian day of year")+
+  theme_classic()+ 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.position = "none"))
+
+(NEE.bar <- NEE.summary %>% 
+  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
+  geom_col(position = "dodge", aes(fill = Year)) + 
+         scale_x_discrete(limits = month.abb) +
+  ylab(bquote('Total monthly NEE (g C' ~m^-2~')'))+
+  xlab("Month")+
+  theme_classic() + 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.position = "none"))
+
+
+(GPPcum.p <-cum.co2fluxes %>% 
+  ggplot(., aes(jday, GPPcum, color = Year)) +
+  geom_line(size = 1)+
+  ylab(bquote('Cumulative GPP (g C' ~m^-2~')'))+
+  xlab("Julian day of year")+
+  theme_classic()+ 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.position = "none"))
+
+(ERcum.p <-cum.co2fluxes %>% 
+  ggplot(., aes(jday, ERcum, color = Year)) +
+  geom_line(size =1)+
+  ylab(bquote('Cumulative ER (g C' ~m^-2~')'))+
+  xlab("Julian day of year")+
+  theme_classic()+ 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.position = "none"))
+
+
+Fig2 <- plot_grid(NEE.bar, NEEcum.p,
+             GPPcum.p, ERcum.p, ncol = 2, rel_heights = c(0.5, 0.5, 0.5, 0.5))
+
+
+Fig2
+tiff("Fig2.tiff", units="in", width=10, height=6,  res=300)
+print(Fig2)
+dev.off()
+
 ```
