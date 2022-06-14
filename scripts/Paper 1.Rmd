@@ -332,12 +332,11 @@ input.daily %>% select(jday, NEE_LT.gC, Year) %>%
 
 ```{r cumulative fluxes}
 
-cumulative.co2fluxes <- input %>%
-  drop_na(Timestamp) %>% # some NAs in the Timestamp for some reason. Need to look into
-  ddply(c("Year", "jday", "month", "season"), summarise,
-        Fco2 = gofC.f(mean(Fco2, na.rm = TRUE)),
-        ER = gofC.f(mean(ER_SOLO, na.rm = TRUE)),
-        GPP = gofC.f(mean(GPP_SOLO, na.rm = TRUE)))
+cum.co2fluxes <- input.daily %>%
+  ddply(c("Year", "jday", "month"), summarise,
+        Fco2 = gofC.f(mean(NEE_LT.gC, na.rm = TRUE)),
+        ER = gofC.f(mean(ER_LT.gC, na.rm = TRUE)),
+        GPP = gofC.f(mean(GPP_LT.gC, na.rm = TRUE)))
 
 input.co2fluxes$GPP <- ifelse(input.co2fluxes$GPP < 0 , NA, input.co2fluxes$GPP) # for some reason there were values < 0 for GPP
 
