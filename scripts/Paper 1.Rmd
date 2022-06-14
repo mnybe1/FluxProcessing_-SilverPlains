@@ -28,9 +28,9 @@ library(gridExtra)
 library(cowplot)
 
 rm(list = ls())
-wd <- ("R:/SET/PlantSci/Shared Work Spaces/Ecology/Flux/SP_data")
-setwd(wd)
-knitr::opts_knit$set(root.dir = wd)
+#wd <- ("R:/SET/PlantSci/Shared Work Spaces/Ecology/Flux/SP_data")
+#setwd(wd)
+#knitr::opts_knit$set(root.dir = wd)
 ```
 
 Below are conversion factors and functions used in the markdown file:
@@ -54,7 +54,7 @@ gtomg.f <- function(x){ # function to convert from g to mg
 ```
 
 ```{r read data and some data class cleaning, include=FALSE}
-input <- fread("./PFP/L6/SilverPlains_L6.csv", header = FALSE, na.strings = "-9999") 
+input <- fread("R:/SET/PlantSci/Shared Work Spaces/Ecology/Flux/SP_data/PFP/L6/SilverPlains_L6.csv", header = FALSE, na.strings = "-9999") 
 input <- tidy.csv(input)
 
 input <- input %>% select(xlDateTime, Fe, Fg_Av, Fh, Fld, Flu, Fn, Fsu, Fsd, Precip, RH, Sws, Ta, Ts, VPD, Wd_SONIC_Av, Ws_SONIC_Av,ER_LT_all, GPP_LT,GPP_SOLO, NEE_LT ) # select met variables (add more as needed)
@@ -80,6 +80,7 @@ input.daily <- input %>%
   drop_na(Timestamp) %>% # some NAs in the Timestamp for some reason. Need to look into
   ddply(c("Year", "jday", "month"), summarise,
         Precip = sum(Precip, na.rm = TRUE),
+        SWin = sum(SWin),
         Ta.mean = mean(Ta, na.rm = TRUE),
         Ta.max = max(Ta, na.rm = TRUE),
         Ta.min = min(Ta, na.rm = TRUE),
@@ -106,7 +107,6 @@ input.daily$month <- month.abb[input.daily$month]
 ### Precipitation
 
 ```{r Precipitation, echo=FALSE, message = FALSE, fig.width = 8, fig.height = 4}
-
 (SP.rain <- input.daily %>% mutate(Precip = replace_na(Precip, 0)) %>%
   ddply(c("Year", "month"), summarise,
   monthly.total = sum(Precip)) %>%
@@ -126,13 +126,15 @@ input.daily$month <- month.abb[input.daily$month]
 #below is precip data from liaweenee - it only goes up to Jan 2022 right now
 rainfall_L <- read.csv("R:/SET/PlantSci/Shared Work Spaces/Ecology/Peoples files/Marion Nyberg/PhD/Rainfall/rainfall.csv")
 rainfall_L <- rainfall_L[-4]
-colnames(rainfall_L)[5] <- "Precip"
+colnames(rainfall_L)[4] <- "Precip"
 rainfall_L$Year <- as.factor(rainfall_L$Year)
 rainfall_L <- rainfall_L %>% filter(Year == 2019)
 colnames(rainfall_L)[1] <- "jday"
 colnames(rainfall_L)[3] <- "month"
 rainfall_L$Site <- "L"
 rainfall_L <- rainfall_L %>% filter(month >= 9)
+rainfall_L$month <- as.numeric(rainfall_L$month) 
+rainfall_L$month<- month.abb[rainfall_L$month]
 
 rainfall_L %>% mutate(Precip = replace_na(Precip, 0)) %>%
   ddply(c("Year", "month"), summarise,
@@ -148,8 +150,6 @@ rainfall.SP <- input.daily %>% select(Precip, jday, month, Year)
 rainfall.SP$Site <- "SP"
 
 rainfall <- rbind(rainfall_L, rainfall.SP)
-rainfall$month <- as.numeric(rainfall$month) 
-rainfall$month.abb <- month.abb[rainfall$month]
 
 rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
   ddply(c("Year", "month"), summarise,
@@ -338,23 +338,4 @@ cum.co2fluxes <- input.daily %>%
         ER = gofC.f(mean(ER_LT.gC, na.rm = TRUE)),
         GPP = gofC.f(mean(GPP_LT.gC, na.rm = TRUE)))
 
-input.co2fluxes$GPP <- ifelse(input.co2fluxes$GPP < 0 , NA, input.co2fluxes$GPP) # for some reason there were values < 0 for GPP
-
-input.co2fluxes$ERcum_year <- as.numeric(unlist(tapply(input.co2fluxes$ER, input.co2fluxes$Year, cumsum)))
-input.co2fluxes$NEEcum_year <- as.numeric(unlist(tapply(input.co2fluxes$Fco2, input.co2fluxes$Year, cumsum)))
-input.co2fluxes$GPPcum_year <- as.numeric(unlist(tapply(input.co2fluxes$GPP, input.co2fluxes$Year, cumsum)))
-
-input.co2fluxes$GPP<- ifelse(is.na(input.co2fluxes$GPP), "0", input.co2fluxes$GPP) # replace NA with 0 for cumsum
-
-
-
-
-(NEE <- plot_ly(input.co2fluxes, x = ~jday, y = ~NEEcum_year, split = ~Year, name = ~Year, type = 'scatter', mode = 'lines'))
-
-(ER <- plot_ly(input.co2fluxes, x = ~jday, y = ~ERcum_year, split = ~Year, name = ~Year, type = 'scatter', mode = 'lines'))
-
-(GPP <- plot_ly(input.co2fluxes, x = ~jday, y = ~GPPcum_year, split = ~Year, name = ~Year, type = 'scatter', mode = 'lines'))
-
 ```
-
-
