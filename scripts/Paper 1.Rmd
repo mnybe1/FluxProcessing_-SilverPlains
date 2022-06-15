@@ -100,6 +100,19 @@ input.daily <- input %>%
 input.daily$month <- as.numeric(input.daily$month) 
 input.daily$month <- month.abb[input.daily$month]
 
+
+input.daily$dayssinceJul1 <- ""
+
+Grow19.20 <- input.daily[1:194,]
+Grow19.20$dayssinceJul1 <- 1:194
+
+Grow20.21 <- input.daily[195:559,]
+Grow20.21$dayssinceJul1 <- 1:365
+
+Grow21.22 <- input.daily[560:907,]
+Grow21.22$dayssinceJul1 <-1:348
+
+input.rearranged <- rbind(Grow19.20,Grow20.21, Grow21.22)
 ```
 
 ## Results {.tabset}
@@ -132,7 +145,7 @@ rainfall_L <- rainfall_L %>% filter(Year == 2019)
 colnames(rainfall_L)[1] <- "jday"
 colnames(rainfall_L)[3] <- "month"
 rainfall_L$Site <- "L"
-rainfall_L <- rainfall_L %>% filter(month >= 9)
+rainfall_L <- rainfall_L %>% filter(month >= 5)
 rainfall_L$month <- as.numeric(rainfall_L$month) 
 rainfall_L$month<- month.abb[rainfall_L$month]
 
@@ -253,11 +266,11 @@ Legend.met
 rainfall$season <- "" # add season variable
 
 # define seasons
-winter <- (rainfall$month == "6" | rainfall$month == "7" | rainfall$month == "8")
-spring <- (rainfall$month == "9" | rainfall$month == "10" | rainfall$month == "11")
-earlysummer <- (rainfall$month == "12")
-latesummer <- (rainfall$month == "1" | rainfall$month == "2")
-autumn <- (rainfall$month == "3" | rainfall$month == "4" | rainfall$month == "5")
+winter <- (rainfall$month == "Jun" | rainfall$month == "Jul" | rainfall$month == "Aug")
+spring <- (rainfall$month == "Sep" | rainfall$month == "Oct" | rainfall$month == "Nov")
+earlysummer <- (rainfall$month == "Dec")
+latesummer <- (rainfall$month == "Jan" | rainfall$month == "Feb")
+autumn <- (rainfall$month == "Mar" | rainfall$month == "Apr" | rainfall$month == "May")
 
 rainfall$season[winter] <- "Winter"
 rainfall$season[spring] <- "Spring"
@@ -289,15 +302,13 @@ input.daily$season <- factor(input.daily$season , levels=c('EarlySummer','LateSu
 rainfall.summary <- rainfall %>% ddply(c("Year", "Site", "month"), summarise,
                                        monthly.sum = sum(Precip, na.rm = TRUE))
 
-rainfall%>% ddply(c("Year", "season"), summarise,
+Seasonal.rain <- rainfall%>% filter(Year == 2020 | Year == 2021 | Year == 2022) %>% ddply(c("Year", "season"), summarise,
                     seasonal.sum = sum(Precip, na.rm = TRUE))
 
-rainfall.summary %>% 
-  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
-  geom_col(position = "dodge", aes(fill = Year)) + 
-  ylab("Monthly rainfall (mm)")+
-  xlab("month")+
-  theme_classic()
+rain.aov <- aov(seasonal.sum~Year*season, data =Seasonal.rain)
+summary(rain.aov)
+
+TukeyHSD(rain.aov)
 ```
 
 
