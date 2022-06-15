@@ -104,13 +104,16 @@ input.daily$month <- month.abb[input.daily$month]
 input.daily$dayssinceJul1 <- ""
 
 Grow19.20 <- input.daily[1:194,]
-Grow19.20$dayssinceJul1 <- 1:194
+Grow19.20$dayssinceJul1 <- 173:366
+Grow19.20$GSYear <- "19/20"
 
 Grow20.21 <- input.daily[195:559,]
 Grow20.21$dayssinceJul1 <- 1:365
+Grow20.21$GSYear <- "20/21"
 
 Grow21.22 <- input.daily[560:907,]
 Grow21.22$dayssinceJul1 <-1:348
+Grow21.22$GSYear <- "21/22"
 
 input.rearranged <- rbind(Grow19.20,Grow20.21, Grow21.22)
 ```
@@ -145,9 +148,27 @@ rainfall_L <- rainfall_L %>% filter(Year == 2019)
 colnames(rainfall_L)[1] <- "jday"
 colnames(rainfall_L)[3] <- "month"
 rainfall_L$Site <- "L"
-rainfall_L <- rainfall_L %>% filter(month >= 5)
+rainfall_L <- rainfall_L %>% filter(month >= 6)
 rainfall_L$month <- as.numeric(rainfall_L$month) 
 rainfall_L$month<- month.abb[rainfall_L$month]
+rainfall_L$GSYear <- "19/20"
+
+input.rearranged$season <- "" # add season variable
+
+# define seasons
+winter <- (rainfall_L$month == "Jun" | rainfall_L$month == "Jul" | rainfall_L$month == "Aug")
+spring <- (rainfall_L$month == "Sep" | rainfall_L$month == "Oct" | rainfall_L$month == "Nov")
+earlysummer <- (rainfall_L$month == "Dec")
+latesummer <- (rainfall_L$month == "Jan" | rainfall_L$month == "Feb")
+autumn <- (rainfall_L$month == "Mar" | rainfall_L$month == "Apr" | rainfall_L$month == "May")
+
+rainfall_L$season[winter] <- "Winter"
+rainfall_L$season[spring] <- "Spring"
+rainfall_L$season[earlysummer] <- "EarlySummer"
+rainfall_L$season[latesummer] <- "LateSummer"
+rainfall_L$season[autumn] <- "Autumn"
+
+rainfall_L$season <- factor(rainfall_L$season , levels=c('EarlySummer','LateSummer', 'Autumn', 'Winter', 'Spring'))
 
 rainfall_L %>% mutate(Precip = replace_na(Precip, 0)) %>%
   ddply(c("Year", "month"), summarise,
@@ -279,36 +300,6 @@ rainfall$season[latesummer] <- "LateSummer"
 rainfall$season[autumn] <- "Autumn"
 
 rainfall$season <- factor(rainfall$season , levels=c('EarlySummer','LateSummer', 'Autumn', 'Winter', 'Spring'))
-
-input.daily$season <- "" # add season variable
-
-# define seasons
-winter <- (input.daily$month == "6" | input.daily$month == "7" | input.daily$month == "8")
-spring <- (input.daily$month == "9" | input.daily$month == "10" | input.daily$month == "11")
-earlysummer <- (input.daily$month == "12")
-latesummer <- (input.daily$month == "1" | input.daily$month == "2")
-autumn <- (input.daily$month == "3" | input.daily$month == "4" | input.daily$month == "5")
-
-input.daily$season[winter] <- "Winter"
-input.daily$season[spring] <- "Spring"
-input.daily$season[earlysummer] <- "EarlySummer"
-input.daily$season[latesummer] <- "LateSummer"
-input.daily$season[autumn] <- "Autumn"
-
-input.daily$season <- factor(input.daily$season , levels=c('EarlySummer','LateSummer', 'Autumn', 'Winter', 'Spring'))
-```
-
-```{r create rainfall summary}
-rainfall.summary <- rainfall %>% ddply(c("Year", "Site", "month"), summarise,
-                                       monthly.sum = sum(Precip, na.rm = TRUE))
-
-Seasonal.rain <- rainfall%>% filter(Year == 2020 | Year == 2021 | Year == 2022) %>% ddply(c("Year", "season"), summarise,
-                    seasonal.sum = sum(Precip, na.rm = TRUE))
-
-rain.aov <- aov(seasonal.sum~Year*season, data =Seasonal.rain)
-summary(rain.aov)
-
-TukeyHSD(rain.aov)
 ```
 
 
@@ -360,28 +351,27 @@ Ts.summary %>%
 ```
 
 ```{r cumulative fluxes, fig.width = 10, fig.height = 6}
-cum.co2fluxes <- input.daily %>%
-  select(NEE_LT.gC, GPP_LT.gC, ER_LT.gC, jday, Year, month) %>% 
-  group_by(Year) %>% 
+cum.co2fluxes <- input.rearranged %>% #input.daily %>%
+  select(NEE_LT.gC, GPP_LT.gC, ER_LT.gC, dayssinceJul1, GSYear) %>% 
+  group_by(GSYear) %>% 
   mutate(NEEcum = cumsum(NEE_LT.gC),
          GPPcum = cumsum(GPP_LT.gC),
          ERcum = cumsum(ER_LT.gC))
 
 (NEEcum.p <-cum.co2fluxes %>% 
-  ggplot(., aes(jday, NEEcum, color = Year)) +
+  ggplot(., aes(dayssinceJul1, NEEcum, color = GSYear)) +
   geom_line(size = 1)+
   ylab(bquote('Cumulative NEE (g C' ~m^-2~')'))+
-  xlab("Julian day of year")+
+  xlab("Days since July 1st")+
   theme_classic()+ 
     theme(axis.title = element_text(size = 14),
-          axis.text = element_text(size = 13),
-          legend.position = "none"))
+          axis.text = element_text(size = 13)))
 
 (NEE.time <- input.daily %>% 
   ggplot(., aes(jday, NEE_LT.gC, color = Year)) +
   geom_line(size = 1)+
   ylab(bquote('Cumulative NEE (g C' ~m^-2~ day^-1*')'))+
-  xlab("Julian day of year")+
+  xlab("Days since July 1st")+
   theme_classic()+ 
     theme(axis.title = element_text(size = 14),
           axis.text = element_text(size = 13),
@@ -400,24 +390,22 @@ cum.co2fluxes <- input.daily %>%
 
 
 (GPPcum.p <-cum.co2fluxes %>% 
-  ggplot(., aes(jday, GPPcum, color = Year)) +
+  ggplot(., aes(dayssinceJul1, GPPcum, color = GSYear)) +
   geom_line(size = 1)+
   ylab(bquote('Cumulative GPP (g C' ~m^-2~')'))+
-  xlab("Julian day of year")+
+  xlab("Days since July 1st")+
   theme_classic()+ 
     theme(axis.title = element_text(size = 14),
-          axis.text = element_text(size = 13),
-          legend.position = "none"))
+          axis.text = element_text(size = 13)))
 
 (ERcum.p <-cum.co2fluxes %>% 
-  ggplot(., aes(jday, ERcum, color = Year)) +
+  ggplot(., aes(dayssinceJul1, ERcum, color = GSYear)) +
   geom_line(size =1)+
   ylab(bquote('Cumulative ER (g C' ~m^-2~')'))+
-  xlab("Julian day of year")+
+  xlab("Days since July 1st")+
   theme_classic()+ 
     theme(axis.title = element_text(size = 14),
-          axis.text = element_text(size = 13),
-          legend.position = "none"))
+          axis.text = element_text(size = 13)))
 
 
 Fig2 <- plot_grid(NEE.bar, NEEcum.p,
@@ -429,4 +417,44 @@ tiff("Fig2.tiff", units="in", width=10, height=6,  res=300)
 print(Fig2)
 dev.off()
 
+```
+
+```{r}
+input.rearranged$season <- "" # add season variable
+
+# define seasons
+winter <- (input.rearranged$month == "Jun" | input.rearranged$month == "Jul" | input.rearranged$month == "Aug")
+spring <- (input.rearranged$month == "Sep" | input.rearranged$month == "Oct" | input.rearranged$month == "Nov")
+earlysummer <- (input.rearranged$month == "Dec")
+latesummer <- (input.rearranged$month == "Jan" | input.rearranged$month == "Feb")
+autumn <- (input.rearranged$month == "Mar" | input.rearranged$month == "Apr" | input.rearranged$month == "May")
+
+input.rearranged$season[winter] <- "Winter"
+input.rearranged$season[spring] <- "Spring"
+input.rearranged$season[earlysummer] <- "EarlySummer"
+input.rearranged$season[latesummer] <- "LateSummer"
+input.rearranged$season[autumn] <- "Autumn"
+
+input.rearranged$season <- factor(input.rearranged$season , levels=c('EarlySummer','LateSummer', 'Autumn', 'Winter', 'Spring'))
+```
+
+```{r}
+rainfall.SP <- input.rearranged %>% select(Precip, month, GSYear, season)
+
+
+rainfall <- rainfall_L %>% select(Precip, month, GSYear, season) %>% rbind(., rainfall.SP)
+
+rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
+  ddply(c("GSYear", "season"), summarise,
+  seasonal.total = sum(Precip)) %>%
+  ggplot(., aes(x = GSYear, y = seasonal.total, group = GSYear, fill = season)) +
+       #scale_x_discrete(limits = month.abb) +
+  geom_col() + 
+  ylab("Seasonal rainfall (mm)")+
+  xlab("Month")+
+  theme_classic()+
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14))
 ```
