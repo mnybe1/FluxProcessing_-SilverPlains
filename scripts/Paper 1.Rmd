@@ -126,6 +126,47 @@ end.time <- as.Date("06-30", "%m-%d")
 start.end <- c(start.time, end.time)
 ```
 
+```{r}
+input.daily$dayssinceJun1 <- ""
+
+Grow19.20 <- input.daily[1:164,]
+Grow19.20$dayssinceJun1 <- 202:365
+Grow19.20$GSYear <- "19/20"
+
+Grow20.21 <- input.daily[165:529,]
+Grow20.21$dayssinceJun1 <- 1:365
+Grow20.21$GSYear <- "20/21"
+
+Grow21.22 <- input.daily[530:907,]
+Grow21.22$dayssinceJun1 <-1:378
+Grow21.22$GSYear <- "21/22"
+
+input.rearranged <- rbind(Grow19.20,Grow20.21, Grow21.22)
+input.rearranged$monthyear <- as.yearmon(paste(input.rearranged$month, input.rearranged$Year), "%m %Y")
+
+start.time <- as.Date("06-01", "%m-%d")
+end.time <- as.Date("06-30", "%m-%d")
+start.end <- c(start.time, end.time)
+```
+
+```{r}
+input.rearranged$season <- "" # add season variable
+
+# define seasons
+winter <- (input.rearranged$month.name == "Jun" | input.rearranged$month.name == "Jul" | input.rearranged$month.name == "Aug")
+spring <- (input.rearranged$month.name == "Sep" | input.rearranged$month.name == "Oct" | input.rearranged$month.name == "Nov")
+summer <- (input.rearranged$month.name == "Dec" | input.rearranged$month.name == "Jan" | input.rearranged$month.name == "Feb")
+autumn <- (input.rearranged$month.name == "Mar" | input.rearranged$month.name == "Apr" | input.rearranged$month.name == "May")
+
+input.rearranged$season[winter] <- "Winter"
+input.rearranged$season[spring] <- "Spring"
+input.rearranged$season[summer] <- "Summer"
+#input.rearranged$season[latesummer] <- "LateSummer"
+input.rearranged$season[autumn] <- "Autumn"
+
+input.rearranged$season <- factor(input.rearranged$season , levels=c('Summer', 'Autumn', 'Winter', 'Spring'))
+```
+
 ## Results {.tabset}
 
 ### Precipitation
@@ -144,8 +185,6 @@ rainfall_L <- rainfall_L %>% filter(month >= 7)
 rainfall_L$month <- as.numeric(rainfall_L$month) 
 rainfall_L$month.name<- month.abb[rainfall_L$month]
 rainfall_L$GSYear <- "19/20"
-
-input.rearranged$season <- "" # add season variable
 
 # define seasons
 winter <- (rainfall_L$month.name == "Jun" | rainfall_L$month.name == "Jul" | rainfall_L$month.name == "Aug")
@@ -259,12 +298,12 @@ ggplotly(ggplot(input.daily, aes(x = as.Date(jday, origin = ("2020-01-01")), y =
 group.colors <- c("19/20" = "#333BFF", "20/21" = "#CC6600", "21/22" ="#9633FF")
 
 
-(SWC.20 <- input.rearranged %>% filter (GSYear == "19/20"| GSYear == "20/21" | GSYear == "21/22" ) %>% ggplot(., aes(x = as.Date(dayssinceJul1, origin = as.Date("07-01", "%m-%d")), SWC, group = GSYear)) +
+(SWC.20 <- input.rearranged %>% filter (GSYear == "19/20" ) %>% ggplot(., aes(x = as.Date(dayssinceJun1, origin = as.Date("06-01", "%m-%d")), SWC, group = GSYear)) +
   geom_line(aes(color = GSYear), size = 1.5)+
   # scale_x_continuous(limits = c(0, 365))+
   xlab('Month') +
   ylab('SWC %') +
-   scale_x_date(breaks = "month", date_labels = "%b", limits = as.Date(c("07-01", "06-31"), "%m-%d"))+
+   scale_x_date(breaks = "month", date_labels = "%b", limits = as.Date(c("06-01", "05-31"), "%m-%d"))+
     scale_color_manual(values = group.colors)+
   theme_classic() + 
     theme(axis.title = element_text(size = 14),
@@ -273,28 +312,14 @@ group.colors <- c("19/20" = "#333BFF", "20/21" = "#CC6600", "21/22" ="#9633FF")
           legend.title = element_text(size = 14)))
 
 SWC.20
-tiff("SWC22.tiff", units="in", width=10, height=6,  res=300)
+tiff("SWC20.tiff", units="in", width=10, height=6,  res=300)
 print(SWC.20)
 dev.off()
 ```
 
 
 
-```{r, fig.width = 10, fig.height = 6}
-Legend.met<- get_legend(SP.rain+ theme(legend.position = 'right'))
 
-Fig1 <- plot_grid(rainfall.p + theme(legend.position="none"), TA+ theme(legend.position="none"),
-             SWC.20+ theme(legend.position="none"), TS+ theme(legend.position="none"), ncol = 2, rel_heights = c(0.5, 0.5, 0.5, 0.5))
-
-
-Fig1
-tiff("Fig1.tiff", units="in", width=10, height=6,  res=300)
-print(Fig1)
-dev.off()
-
-
-Legend.met
-```
 
 ```{r add seasons, include=FALSE}
 #rainfall$season <- "" # add season variable
@@ -317,51 +342,53 @@ Legend.met
 
 
 ```{r seasonal NEE}
-NEE.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
+NEE.summary <- input.rearranged %>% ddply(c("GSYear", "month.name"), summarise,
                                        monthly.sum = sum(NEE_LT.gC))
+NEE.summary$month.name <- factor(NEE.summary$month.name, levels=c("Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun"))
 
-GPP.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
-                                       monthly.sum = sum(GPP_LT.gC))
-
-ER.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
-                                       monthly.sum = sum(ER_LT.gC))
-
-
-Ts.summary <- input.daily %>% ddply(c("Year", "month"), summarise,
-                                       monthly.mean = mean(Ts.mean))
-
-# check when switches from sink to source
-
-NEE.summary %>% 
-  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
-  geom_col(position = "dodge", aes(fill = Year)) + 
-         scale_x_discrete(limits = month.abb) +
-
+(NEE.bar <- NEE.summary  %>%
+  ggplot(., aes(x = month.name, y = monthly.sum, group = GSYear, fill = GSYear)) +
+  geom_col(position = "dodge", aes(fill = GSYear)) + 
+         #scale_x_discrete(limits = start.end)+
   ylab("Monthly NEE")+
   xlab("month")+
-  theme_classic()
+  theme_classic())
 
-GPP.summary %>%
-  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
-  geom_col(position = "dodge", aes(fill = Year)) + 
+NEE.bar
+tiff("NEEbar.tiff", units="in", width=10, height=6,  res=300)
+print(NEE.bar)
+dev.off()
+```
+
+```{r}
+GPP.summary <- input.rearranged %>% ddply(c("GSYear", "season"), summarise,
+                                       monthly.sum = sum(GPP_LT.gC))
+#GPP.summary$month.name <- factor(GPP.summary$month.name, levels=c("Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", #"Apr", "May"))
+
+(GPP.bar <- GPP.summary  %>%
+  ggplot(., aes(x = season, y = monthly.sum, group = GSYear, fill = GSYear)) +
+  geom_col(position = "dodge", aes(fill = GSYear)) + 
+         #scale_x_discrete(limits = start.end)+
   ylab("Monthly GPP")+
   xlab("month")+
-  theme_classic()
-
-ER.summary %>%
-  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
-  geom_col(position = "dodge", aes(fill = Year)) + 
-  ylab("Monthly ER")+
-  xlab("month")+
-  theme_classic()
-
-Ts.summary %>%
-  ggplot(., aes(x = month, y = monthly.mean, group = Year, fill = Site)) +
-  geom_col(position = "dodge", aes(fill = Year)) + 
-  ylab("Monthly ER")+
-  xlab("month")+
-  theme_classic()
+  theme_classic())
 ```
+
+```{r}
+ER.summary <- input.rearranged %>% ddply(c("GSYear", "season"), summarise,
+                                       monthly.sum = sum(ER_LT.gC))
+#ER.summary$month.name <- factor(ER.summary$month.name, levels=c("Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun"))
+
+(ER.bar <- ER.summary  %>%
+  ggplot(., aes(x = season, y = monthly.sum, group = GSYear, fill = GSYear)) +
+  geom_col(position = "dodge", aes(fill = GSYear)) + 
+         #scale_x_discrete(limits = start.end)+
+  ylab("Monthly ER")+
+  xlab("month")+
+  theme_classic())
+```
+
+
 
 ```{r cumulative fluxes, fig.width = 10, fig.height = 6}
 cum.co2fluxes <- input.rearranged %>% #input.daily %>%
@@ -372,40 +399,24 @@ cum.co2fluxes <- input.rearranged %>% #input.daily %>%
          ERcum = cumsum(ER_LT.gC))
 
 (NEEcum.p <-cum.co2fluxes %>% 
-  ggplot(., aes(dayssinceJul1, NEEcum, color = GSYear)) +
+  ggplot(., aes(x = as.Date(dayssinceJul1, origin = as.Date("07-01", "%m-%d")), NEEcum, color = GSYear)) +
   geom_line(size = 1)+
-  ylab(bquote('Cumulative NEE (g C' ~m^-2~')'))+
+  ylab(bquote('Cumulative NEE (g C ' ~m^-2~')'))+
   xlab("Days since July 1st")+
+       scale_x_date(breaks = "month", date_labels = "%b", limits = as.Date(c("07-01", "06-31"), "%m-%d"))+
   theme_classic()+ 
     theme(axis.title = element_text(size = 14),
           axis.text = element_text(size = 13)))
 
-(NEE.time <- input.daily %>% 
-  ggplot(., aes(jday, NEE_LT.gC, color = Year)) +
-  geom_line(size = 1)+
-  ylab(bquote('Cumulative NEE (g C' ~m^-2~ day^-1*')'))+
-  xlab("Days since July 1st")+
-  theme_classic()+ 
-    theme(axis.title = element_text(size = 14),
-          axis.text = element_text(size = 13),
-          legend.position = "none"))
-
-(NEE.bar <- NEE.summary %>% 
-  ggplot(., aes(x = month, y = monthly.sum, group = Year, fill = Site)) +
-  geom_col(position = "dodge", aes(fill = Year)) + 
-         scale_x_discrete(limits = month.abb) +
-  ylab(bquote('Total monthly NEE (g C' ~m^-2~')'))+
-  xlab("Month")+
-  theme_classic() + 
-    theme(axis.title = element_text(size = 14),
-          axis.text = element_text(size = 13),
-          legend.position = "none"))
-
+NEEcum.p
+tiff("NEEcum.tiff", units="in", width=10, height=6,  res=300)
+print(NEEcum.p)
+dev.off()
 
 (GPPcum.p <-cum.co2fluxes %>% 
   ggplot(., aes(dayssinceJul1, GPPcum, color = GSYear)) +
   geom_line(size = 1)+
-  ylab(bquote('Cumulative GPP (g C' ~m^-2~')'))+
+  ylab(bquote('Cumulative GPP (g C ' ~m^-2~')'))+
   xlab("Days since July 1st")+
   theme_classic()+ 
     theme(axis.title = element_text(size = 14),
@@ -432,45 +443,35 @@ dev.off()
 
 ```
 
-```{r}
-input.rearranged$season <- "" # add season variable
-
-# define seasons
-winter <- (input.rearranged$month.name == "Jun" | input.rearranged$month.name == "Jul" | input.rearranged$month.name == "Aug")
-spring <- (input.rearranged$month.name == "Sep" | input.rearranged$month.name == "Oct" | input.rearranged$month.name == "Nov")
-summer <- (input.rearranged$month.name == "Dec" | input.rearranged$month.name == "Jan" | input.rearranged$month.name == "Feb")
-autumn <- (input.rearranged$month.name == "Mar" | input.rearranged$month.name == "Apr" | input.rearranged$month.name == "May")
-
-input.rearranged$season[winter] <- "Winter"
-input.rearranged$season[spring] <- "Spring"
-input.rearranged$season[summer] <- "Summer"
-#input.rearranged$season[latesummer] <- "LateSummer"
-input.rearranged$season[autumn] <- "Autumn"
-
-input.rearranged$season <- factor(input.rearranged$season , levels=c('Summer', 'Autumn', 'Winter', 'Spring'))
-```
 
 
 
 ```{r}
 (GPPcum.p <-cum.co2fluxes %>% 
    ddply(c("GSYear", "season"), summarise,
-  seasonal.total = cumsum(GPP_LT.gC)) %>%
+  seasonal.total = cumsum(GPP_LT.gC)) %>% filter(season == "Winter") %>%
    ggplot(., aes(x = GSYear, y = seasonal.total, group = GSYear, fill = season)) +
   geom_col() + 
   ylab("Total GPP")+
   xlab("Growing season year")+
+   scale_y_continuous(limits = c(0,60000))+
   theme_classic()+
     theme(axis.title = element_text(size = 14),
           axis.text = element_text(size = 13),
           legend.text = element_text(size = 13),
           legend.title = element_text(size = 14)))
 
+GPPcum.p
+tiff("GPP.tiff", units="in", width=10, height=6,  res=300)
+print(GPPcum.p)
+dev.off()
+
 (ERcum.p <-cum.co2fluxes %>% 
    ddply(c("GSYear", "season"), summarise,
-  seasonal.total = cumsum(ER_LT.gC)) %>%
+  seasonal.total = cumsum(ER_LT.gC)) %>% filter(season == "Summer") %>%
    ggplot(., aes(x = GSYear, y = seasonal.total, group = GSYear, fill = season)) +
   geom_col() + 
+       scale_y_continuous(limits = c(0,60000))+
   ylab("Total ER")+
   xlab("Growing season year")+
   theme_classic()+
@@ -478,11 +479,10 @@ input.rearranged$season <- factor(input.rearranged$season , levels=c('Summer', '
           axis.text = element_text(size = 13),
           legend.text = element_text(size = 13),
           legend.title = element_text(size = 14)))
+
+ERcum.p
+tiff("ER.tiff", units="in", width=10, height=6,  res=300)
+print(ERcum.p)
+dev.off()
 ```
 
-```{r, fig.height=10, fig.width = 6}
-
-(Fig3 <- plot_grid(rain,
-             GPPcum.p, ERcum.p, nrow =3))
-
-```
