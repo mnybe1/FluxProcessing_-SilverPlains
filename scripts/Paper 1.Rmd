@@ -59,7 +59,7 @@ gtomg.f <- function(x){ # function to convert from g to mg
 input <- fread("R:/SET/PlantSci/Shared Work Spaces/Ecology/Flux/SP_data/PFP/L6/SilverPlains_L6.csv", header = FALSE, na.strings = "-9999") 
 input <- tidy.csv(input)
 
-input <- input %>% select(xlDateTime, Fe, Fg_Av, Fh, Fld, Flu, Fn, Fsu, Fsd, Precip, RH, Sws, Ta, Ts, VPD, Wd_SONIC_Av, Ws_SONIC_Av,ER_LT_all, GPP_LT,GPP_SOLO, NEE_LT, ET ) # select met variables (add more as needed)
+input <- input %>% select(xlDateTime, Fe, Fg_Av, Fh, Fld, Flu, Fn, Fsu, Fsd, Precip, RH, Sws, Ta, Ts, VPD, Wd_SONIC_Av, Ws_SONIC_Av,ER_LT_all, GPP_LT,GPP_SOLO, NEE_LT, ET_EF ) # select met variables (add more as needed)
 colnames(input) <- c('Timestamp', 'LE', 'G', 'H', 'LWin', 'LWout', 'NETRAD', 'SWout', 'SWin', 'Precip', 'RH', 'SWC', 'Ta', 'Ts', 'VPD', 'WD', 'WS', 'ER_LT', 'GPP_LT', 'GPP_SOLO', 'NEE_LT', 'ET')
 
 input$Timestamp <- as.POSIXct(input$Timestamp, format= "%d/%m/%Y %H:%M") # change from character to POSIXct
@@ -70,7 +70,6 @@ input$Year <- year(input$Timestamp) # extract year
 input$Year <- as.factor(input$Year) # convert year from integer to factor
 input$month <- month(as.POSIXct(input$Timestamp)) # extract month
 input$month <- as.factor(input$month)
-input$ET <-as.numeric(input$ET)
 ```
 
 ```{r weird stuff in data filtered out}
@@ -93,7 +92,7 @@ input.daily <- input %>%
         SWC = mean(SWC, na.rm = TRUE),
         RH = mean(RH, na.rm = TRUE),
         VPD = mean(VPD, na.rm = TRUE),
-        ET = mean(ET, na.rm = TRUE) * 86400,
+        ET = mean(ET, na.rm = TRUE),
         NEE_LT = mean(NEE_LT, na.rm = TRUE), #daily average umol m-2 s-1
         ER_LT = mean(ER_LT, na.rm = TRUE),
         GPP_LT = mean(GPP_LT, na.rm = TRUE)) %>%
@@ -325,28 +324,10 @@ dev.off()
 
 
 ```
-```{r, fig.width=13, fig.height=5}
-group.colour <- c("19/20" = "#E69F00", "20/21" = "#009E73", "21/22" ="#D55E00")
-
-
-(ET.p <- ggplot(input.rearranged, aes(x = dayssinceJun1, y = ET, group = GSYear)) +
-  geom_line(aes(color = GSYear), size = 1)+
-    scale_color_manual(values = group.colour) +
- # scale_x_date(date_labels = "%b", date_breaks = "1 month") +
-  xlab("Days since June 1st")+
-   ylab("ET (mm/day)")+
-  theme_classic())+
-    theme(axis.title = element_text(size = 14),
-          axis.text = element_text(size = 13),
-          legend.text = element_text(size = 13),
-          legend.title = element_text(size = 14))
-```
-
 
 ### VPD
 
 ```{r VPD, echo=FALSE, message = FALSE, fig.width = 9, fig.height = 4}
-
 (VPD.p <- ggplot(input.rearranged, aes(x = dayssinceJun1, y = VPD, group = GSYear)) +
   geom_line(aes(color = GSYear), size = 1)+
     scale_color_manual(values = group.colour) +
@@ -370,6 +351,7 @@ dev.off()
 ### SWC
 
 ```{r, echo=FALSE, message = FALSE, fig.width = 7, fig.height = 4}
+group.colour <- c("19/20" = "#E69F00", "20/21" = "#009E73", "21/22" ="#D55E00")
 
 input.rearranged$dayssinceJun1 <- as.numeric(input.rearranged$dayssinceJun1)
 
@@ -446,12 +428,11 @@ dev.off()
 ```{r}
 GPP.summary <- input.rearranged %>% ddply(c("GSYear", "season"), summarise,
                                        monthly.sum = sum(GPP_LT.gC))
-GPP.summary$season <- factor(GPP.summary$season, levels=c("Winter", "Spring", "Summer", "Autumn"))
-
 
 GPP.summary <- input.rearranged %>% ddply(c("GSYear"), summarise,
                                        monthly.sum = sum(GPP_LT.gC))
 #GPP.summary$month.name <- factor(GPP.summary$month.name, levels=c("Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", #"Apr", "May"))
+GPP.summary$season <- factor(GPP.summary$season, levels=c("Winter", "Spring", "Summer", "Autumn"))
 
 (GPP.bar <- GPP.summary  %>%
   ggplot(., aes(x = season, y = monthly.sum, group = GSYear, fill = GSYear)) +
