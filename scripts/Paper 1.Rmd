@@ -59,11 +59,11 @@ gtomg.f <- function(x){ # function to convert from g to mg
 input <- fread("R:/SET/PlantSci/Shared Work Spaces/Ecology/Flux/SP_data/PFP/L6/SilverPlains_L6.csv", header = FALSE, na.strings = "-9999") 
 input <- tidy.csv(input)
 
-input <- input %>% select(xlDateTime, Fe, Fg_Av, Fh, Fld, Flu, Fn, Fsu, Fsd, Precip, RH, Sws, Ta, Ts, VPD, Wd_SONIC_Av, Ws_SONIC_Av,ER_LT_all, GPP_LT,GPP_SOLO, NEE_LT, ET_EF ) # select met variables (add more as needed)
+input <- input %>% select(xlDateTime, Fe, Fg_Av, Fh, Fld, Flu, Fn, Fsu, Fsd, Precip, RH, Sws, Ta, Ts, VPD, Wd_SONIC_Av, Ws_SONIC_Av,ER_LT_all, GPP_LT,GPP_SOLO, NEE_LT, ET) # select met variables (add more as needed)
 colnames(input) <- c('Timestamp', 'LE', 'G', 'H', 'LWin', 'LWout', 'NETRAD', 'SWout', 'SWin', 'Precip', 'RH', 'SWC', 'Ta', 'Ts', 'VPD', 'WD', 'WS', 'ER_LT', 'GPP_LT', 'GPP_SOLO', 'NEE_LT', 'ET')
 
 input$Timestamp <- as.POSIXct(input$Timestamp, format= "%d/%m/%Y %H:%M") # change from character to POSIXct
-input[,2:21] <- as.data.frame(sapply(input[,2:21], as.numeric)) # convert data frame from character to numeric
+input[,2:22] <- as.data.frame(sapply(input[,2:22], as.numeric)) # convert data frame from character to numeric
 
 input$jday <-yday(input$Timestamp) # add jday
 input$Year <- year(input$Timestamp) # extract year
@@ -92,7 +92,7 @@ input.daily <- input %>%
         SWC = mean(SWC, na.rm = TRUE),
         RH = mean(RH, na.rm = TRUE),
         VPD = mean(VPD, na.rm = TRUE),
-        ET = mean(ET, na.rm = TRUE),
+        ET = mean(ET, na.rm = TRUE)* 86400,#daily total ET
         NEE_LT = mean(NEE_LT, na.rm = TRUE), #daily average umol m-2 s-1
         ER_LT = mean(ER_LT, na.rm = TRUE),
         GPP_LT = mean(GPP_LT, na.rm = TRUE)) %>%
