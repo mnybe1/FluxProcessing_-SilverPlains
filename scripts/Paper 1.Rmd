@@ -328,6 +328,9 @@ dev.off()
 ### VPD
 
 ```{r VPD, echo=FALSE, message = FALSE, fig.width = 9, fig.height = 4}
+group.colour <- c("19/20" = "#E69F00", "20/21" = "#009E73", "21/22" ="#D55E00")
+
+
 (VPD.p <- ggplot(input.rearranged, aes(x = dayssinceJun1, y = VPD, group = GSYear)) +
   geom_line(aes(color = GSYear), size = 1)+
     scale_color_manual(values = group.colour) +
@@ -341,9 +344,33 @@ dev.off()
           legend.title = element_text(size = 14))
 
 VPD.p
-tiff("VPD.tiff", units="in", width=10, height=6,  res=300)
-print(VPD.p)
-dev.off()
+#("VPD.tiff", units="in", width=10, height=6,  res=300)
+#print(VPD.p)
+#dev.off()
+
+```
+
+### ET
+
+```{r VPD, echo=FALSE, message = FALSE, fig.width = 9, fig.height = 4}
+
+(ET.p <- ggplot(input.rearranged, aes(x = dayssinceJun1, y = ET, group = GSYear)) +
+  geom_line(aes(color = GSYear), size = 1)+
+    scale_color_manual(values = group.colour) +
+ # scale_x_date(date_labels = "%b", date_breaks = "1 month") +
+  xlab("Days since June 1st")+
+   ylab("ET (mm day-1)")+
+  theme_classic())+
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14))
+
+ggplotly(ET.p)
+
+#("ET.tiff", units="in", width=10, height=6,  res=300)
+#print(ET.p)
+#dev.off()
 
 ```
 
@@ -351,7 +378,6 @@ dev.off()
 ### SWC
 
 ```{r, echo=FALSE, message = FALSE, fig.width = 7, fig.height = 4}
-group.colour <- c("19/20" = "#E69F00", "20/21" = "#009E73", "21/22" ="#D55E00")
 
 input.rearranged$dayssinceJun1 <- as.numeric(input.rearranged$dayssinceJun1)
 
@@ -371,33 +397,11 @@ input.rearranged$dayssinceJun1 <- as.numeric(input.rearranged$dayssinceJun1)
 
 
 SWC.20
-tiff("SWC20.tiff", units="in", width=10, height=6,  res=300)
-print(SWC.20)
-dev.off()
+#tiff("SWC20.tiff", units="in", width=10, height=6,  res=300)
+#print(SWC.20)
+#dev.off()
 ```
 
-
-
-
-
-```{r add seasons, include=FALSE}
-#rainfall$season <- "" # add season variable
-
-# define seasons
-#winter <- (rainfall$month == "Jun" | rainfall$month == "Jul" | rainfall$month == "Aug")
-#spring <- (rainfall$month == "Sep" | rainfall$month == "Oct" | rainfall$month == "Nov")
-#summer <- (rainfall$month == "Dec" | rainfall$month == "Jan" | rainfall$month == "Feb")
-#autumn <- (rainfall$month == "Mar" | rainfall$month == "Apr" | rainfall$month == "May")
-
-#rainfall$season[winter] <- "Winter"
-#rainfall$season[spring] <- "Spring"
-#rainfall$season[summer] <- "Summer"
-#rainfall$season[earlysummer] <- "EarlySummer"
-#rainfall$season[latesummer] <- "LateSummer"
-#rainfall$season[autumn] <- "Autumn"
-
-#rainfall$season <- factor(rainfall$season , levels=c('Summer', 'Autumn', 'Winter', 'Spring'))
-```
 
 
 ```{r seasonal NEE}
