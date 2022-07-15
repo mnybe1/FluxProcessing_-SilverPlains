@@ -1,0 +1,281 @@
+---
+title: "Wind Rose"
+author: "Marion Nyberg"
+date: '2022-07-15'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r setup, include=FALSE}
+library(data.table)
+library(janitor)
+library(plotly)
+library(plyr)
+library(dplyr)
+library(knitr)
+library(tidyverse)
+#library(devtools)
+library(openair)
+library(tidyr)
+library(naniar)
+library(forecast)
+library(kableExtra)
+library(htmltools)
+library(ggpubr)
+library(rstatix)
+library(broom)
+library(gtable)
+library(gridExtra)
+library(cowplot)
+library(viridis)
+library(zoo)
+library(clifro)
+library(lattice)
+
+rm(list = ls())
+#wd <- ("R:/SET/PlantSci/Shared Work Spaces/Ecology/Flux/SP_data")
+#setwd(wd)
+#knitr::opts_knit$set(root.dir = wd)
+```
+
+Below are conversion factors and functions used in the markdown file:
+
+```{r functions and conversions}
+d.avg <- 1800 * 48 #60 secs * 60 mins * 24 hours (# of secs in day)
+co2_conv <- 12.01/(10^6) 
+
+tidy.csv <- function(x){
+  input <- x[-c(1,2),] %>%
+    row_to_names(., 1)
+}  
+
+gofC.f <- function(x){ # function to convert to mean 30 minute to g of C
+  (x*d.avg)*co2_conv
+}
+
+gtomg.f <- function(x){ # function to convert from g to mg
+  x*1000
+}
+```
+
+```{r read data and some data class cleaning, include=FALSE}
+input <- fread("R:/SET/PlantSci/Shared Work Spaces/Ecology/Flux/SP_data/PFP/L6/SilverPlains_L6.csv", header = FALSE, na.strings = "-9999") 
+input <- tidy.csv(input)
+
+input <- input %>% select(xlDateTime, Fe, Fg_Av, Fh, Fld, Flu, Fn, Fsu, Fsd, Precip, RH, Sws, Ta, Ts, VPD, Wd_SONIC_Av, Ws_SONIC_Av,ER_LT_all, GPP_LT,GPP_SOLO, NEE_LT, ET) # select met variables (add more as needed)
+colnames(input) <- c('Timestamp', 'LE', 'G', 'H', 'LWin', 'LWout', 'NETRAD', 'SWout', 'SWin', 'Precip', 'RH', 'SWC', 'Ta', 'Ts', 'VPD', 'WD', 'WS', 'ER_LT', 'GPP_LT', 'GPP_SOLO', 'NEE_LT', 'ET')
+
+input$Timestamp <- as.POSIXct(input$Timestamp, format= "%d/%m/%Y %H:%M") # change from character to POSIXct
+input[,2:22] <- as.data.frame(sapply(input[,2:22], as.numeric)) # convert data frame from character to numeric
+
+input$jday <-yday(input$Timestamp) # add jday
+input$Year <- year(input$Timestamp) # extract year
+input$Year <- as.factor(input$Year) # convert year from integer to factor
+input$month <- month(as.POSIXct(input$Timestamp)) # extract month
+input$month <- as.factor(input$month)
+input$hour <- format(input$Timestamp, format = "%H")
+input$hour <- as.numeric(input$hour)
+
+# create index for time of day - morn, aft, night
+input$TOD <- ""
+ind.morn<- (input$hour >= 06 & input$hour < 12)
+ind.aft<- (input$hour >= 12 & input$hour < 18)
+ind.night<- (input$hour >= 18 | input$hour < 6)
+
+input$TOD[ind.morn] <- "morn"
+input$TOD[ind.aft] <- "aft"
+input$TOD[ind.night] <- "night"
+
+input <- input[-c(13835, 13836, 31307, 31308)]
+```
+
+```{r add seasons, include=FALSE}
+# maybe this would be better as GS/NGS?
+
+input$season <- "" # add season variable
+
+# define seasons
+winter <- (input$month == "6" | input$month == "7" | input$month == "8")
+spring <- (input$month == "9" | input$month == "10" | input$month == "11")
+summer <- (input$month == "12" | input$month == "1" | input$month == "2")
+autumn <- (input$month == "3" | input$month == "4" | input$month == "5")
+
+input$season[winter] <- "Winter"
+input$season[spring] <- "Spring"
+input$season[summer] <- "Summer"
+input$season[autumn] <- "Autumn"
+
+season_levelorder <-  c('Summer', 'Autumn', 'Winter', 'Spring') 
+```
+
+
+### Wind direction and speed
+
+```{r Wind direction, echo=FALSE, message = FALSE, fig.height=21, fig.width=12}
+input$Month.WR <- input$month
+#plot_ly(input, x = ~jday, y = ~WD, split = ~Year, name = ~Year, type = 'scatter', mode = 'lines')
+windRose(input, ws = "WS", wd = "WD", type = "Year")
+
+input%>%filter(month == "1") %>%
+  windRose(., ws = "WS", wd = "WD", type = "TOD")
+
+Windrose <- windRose(input, ws = "WS", wd = "WD", type = c("TOD","Month.WR"), aspect = "fill")
+
+Windrose
+jpeg("Windrose.jpeg", units="in", width=7, height=23,  res=300)
+print(Windrose)
+dev.off()
+
+input %>% filter(season == "Autumn") %>%
+  windRose(., ws = "WS", wd = "WD")
+
+input %>% filter(season == "Winter") %>%
+  windRose(., ws = "WS", wd = "WD")
+
+input%>% filter(season == "Spring") %>%
+  windRose(., ws = "WS", wd = "WD")
+```
+
+
+```{r}
+# alternative way: https://www.r-bloggers.com/2016/06/plot-a-wind-rose-in-r/
+
+# choose bin size (degrees/bin)
+deg <- 30 
+# define the range of each bin
+dir.breaks <- seq(0-(deg/2), 360+(deg/2), deg)
+# assign each direction to a bin range
+dir.binned <- cut(input$WD,
+                       breaks = dir.breaks,
+                       ordered_result = TRUE)
+# generate pretty lables
+dir.labels <- as.character(c(seq(0, 360-deg, by = deg), 0))
+# replace ranges with pretty bin lables
+levels(dir.binned) <- dir.labels
+# Assign bin names to the original data set
+input$dir.binned <- dir.binned
+
+thm <- theme_bw() + 
+    theme(axis.text.x = element_text(size=8, face = "plain"),
+          axis.text.y = element_text(size=8, face = "plain"),
+          axis.title.x = element_blank(),
+          axis.title.y = element_text(size=8, face = "plain", hjust = 0.9, vjust = 1.3),
+          panel.border = element_blank(),
+          panel.grid  = element_blank())
+
+summary(dir.binned) # see which bin is most common
+
+# initialise the plot
+plt.dirrose <- ggplot() +
+    # since the plot background is blank we'll add a series of horizontal lines, at 5000 count intervals, up to 25000.
+    geom_hline(yintercept = seq(0, 150, by = 25), colour = "grey60", size = 0.3) +
+    # Now we add a darker horizontal line as the top border at 30000.
+    geom_hline(yintercept = 150, colour = "black", size = 0.3) +
+    # We want 12 vertical lines representing the centers of the 30° ranges.
+    geom_vline(xintercept = c(seq(1,12,1)), colour = "grey60", size = 0.3) +
+    # On top of everything we place the histogram bars.
+    geom_bar(data = input, aes(x = dir.binned), width = 1, colour="black", size = 0.3, alpha=0.5) + 
+    # Add the x-axis labels
+    scale_x_discrete( drop = FALSE, labels = c(0, "", "", 90, "", "", 180, "", "", 270, "", "")) +
+    # Add the y-axis labels
+    scale_y_continuous(limits = c(0, 150), expand = c(0, 0), 
+                       breaks = c(0, 25, 50, 75, 100, 125, 150), 
+                       labels = c(0, 25, 50, 75, 100, 125, 150)) +
+    # Add the axis titles
+    labs(x = 'Outward step bearing (°)', y = 'Count of outward steps (x10³)') +
+    # If you only use the plot code up till here you will get a histogram.
+    # the next line wraps the histogram into a windrose
+    coord_polar(start = -(deg/2)*(pi/180)) +
+    # apply theme
+    thm
+plt.dirrose
+```
+
+
+```{r wind and fluxes, fig.width= 10}
+# calculate an average wind pattern as in Griebel, A., et al., 2016
+# wind pattern (WP) is equivalent to a standardized wind sector contribution, based on some temporal average
+
+# there is way tooo much code here and I need to tidy it a lot and also do by season as well as year. 
+
+# define wind sectors
+NE <- input.daily$WD >0 & input.daily$WD <= 90
+SE <- input.daily$WD >90 & input.daily$WD <= 180
+SW <- input.daily$WD >180 & input.daily$WD <= 270
+NW <- input.daily$WD >270 & input.daily$WD <= 360
+
+# adding wind sectors to daily df
+input.daily$wind.sector <- ""
+input.daily$wind.sector <- ifelse(input.daily$WD >0 & input.daily$WD <= 90, "NE", input.daily$wind.sector)
+input.daily$wind.sector <- ifelse(input.daily$WD >90 & input.daily$WD <= 180, "SE", input.daily$wind.sector)
+input.daily$wind.sector <- ifelse(input.daily$WD >180 & input.daily$WD <= 270, "SW", input.daily$wind.sector)
+input.daily$wind.sector <- ifelse(input.daily$WD >270 & input.daily$WD <= 360, "NW", input.daily$wind.sector)
+
+# calculate number of occurrences (n) per wind sector (j)
+# need to make function to do this
+NE.n <- input.daily %>% filter(Year == 2020 | Year == 2021) %>% filter(wind.sector == "NE") %>% nrow()
+NE.n.2021 <- input.daily %>% filter(wind.sector == "NE" & Year == "2021") %>% nrow()
+NE.n.2020 <- input.daily %>% filter(wind.sector == "NE" & Year == "2020") %>% nrow()
+
+SE.n <- input.daily %>% filter(Year == 2020 | Year == 2021) %>% filter(wind.sector == "SE") %>% nrow()
+SE.n.2021 <- input.daily %>% filter(wind.sector == "SE" & Year == "2021") %>% nrow()
+SE.n.2020 <- input.daily %>% filter(wind.sector == "SE" & Year == "2020") %>% nrow()
+
+NW.n <- input.daily %>% filter(Year == 2020 | Year == 2021) %>% filter(wind.sector == "NW") %>% nrow()
+NW.n.2021 <- input.daily %>% filter(wind.sector == "NW" & Year == "2021") %>% nrow()
+NW.n.2020 <- input.daily %>% filter(wind.sector == "NW" & Year == "2020") %>% nrow()
+
+SW.n <- input.daily %>% filter(Year == 2020 | Year == 2021) %>% filter(wind.sector == "SW") %>% nrow()
+SW.n.2021 <- input.daily %>% filter(wind.sector == "SW" & Year == "2021") %>% nrow()
+SW.n.2020 <- input.daily %>% filter(wind.sector == "SW" & Year == "2020") %>% nrow()
+
+# number of occurrences per wind sector divided by number of years (N). N is 2.1 because I did number of days divided by 365 to get the number of years (maybe better to filter to where I have only 2 full years)
+WP.NE <- NE.n/2.1
+WP.SE <- SE.n/2.1
+WP.NW <- NW.n/2.1
+WP.SW <- SW.n/2.1
+
+# average carbon flux from each sector during each year
+NE.co2.2021 <- input.daily %>% filter(wind.sector == "NE" & Year == "2021") %>% select(Fco2) %>%
+  summarise(sum(Fco2)) # 5 obs 
+NW.co2.2021 <- input.daily %>% filter(wind.sector == "NW" & Year == "2021") %>% select(Fco2) %>%
+  summarise(sum(Fco2)) # 132 obs summarise(sum(Fco2)) 
+NE.co2.2020 <- input.daily %>% filter(wind.sector == "NE" & Year == "2020") %>% select(Fco2) %>%
+  summarise(sum(Fco2)) # 4 obs summarise(sum(Fco2)) 
+NW.co2.2020 <- input.daily %>% filter(wind.sector == "NW" & Year == "2020") %>% select(Fco2) %>%  #140 obs
+summarise (sum(Fco2))
+
+SE.co2.2021 <- input.daily %>% filter(wind.sector == "SE" & Year == "2021") %>% select(Fco2) %>%
+  summarise(sum(Fco2)) 
+SW.co2.2021 <- input.daily %>% filter(wind.sector == "SW" & Year == "2021") %>% select(Fco2) %>%
+  summarise(sum(Fco2)) 
+SE.co2.2020 <- input.daily %>% filter(wind.sector == "SE" & Year == "2020") %>% select(Fco2) %>%
+  summarise(sum(Fco2)) 
+SW.co2.2020 <- input.daily %>% filter(wind.sector == "SW" & Year == "2020") %>% select(Fco2) %>%  
+summarise (sum(Fco2)) 
+
+
+# need to rename direction variable
+
+NEco2.2020 <- -0.48/4
+NEco2.2021 <- -2.09/5
+NWco2.2020 <- 46.34/140
+NWco2.2021 <- 30.67/132 
+
+SEco2.2020 <- -14.4/57
+SEco2.2021 <- -49.31/55
+SWco2.2020 <- -23.22/162
+SWco2.2021 <- -82.32/169
+
+Avg.wind.co2 <- data.frame(NEco2.2020, NEco2.2021, NWco2.2020, NWco2.2021,SEco2.2020, SEco2.2021,SWco2.2020, SWco2.2021) %>% pivot_longer(cols = NEco2.2020:SWco2.2021, names_to = "Windsec", )
+Avg.wind.co2$Year <- ""
+Avg.wind.co2$Year <- c("2020", "2021", "2020", "2021", "2020", "2021","2020", "2021")
+
+Avg.wind.co2 %>% ggplot(aes(Windsec, value, group = Year)) + geom_line(aes(group = Year, colour = Year))
+
+# NW is on  average a CO2 source and SE largest CO2 sinks
+```
