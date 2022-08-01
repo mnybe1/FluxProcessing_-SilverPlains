@@ -275,9 +275,9 @@ dev.off()
           legend.title = element_text(size = 14),
           axis.text.x = element_text( vjust = 0.5)))
 rainfall.p
-tiff("rainfall.tiff", units="in", width=10, height=6,  res=300)
-print(rainfall.p)
-dev.off()
+#tiff("rainfall.tiff", units="in", width=10, height=6,  res=300)
+#print(rainfall.p)
+#dev.off()
 
 
 rainfall.summary <- rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
@@ -314,14 +314,14 @@ rainfall.summary <- rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
           legend.title = element_text(size = 14)))
 
 TA
-tiff("TA.tiff", units="in", width=10, height=6,  res=300)
-print(TA)
-dev.off()
+#tiff("TA.tiff", units="in", width=10, height=6,  res=300)
+#print(TA)
+#dev.off()
 
 TS
-tiff("TS.tiff", units="in", width=10, height=6,  res=300)
-print(TS)
-dev.off()
+#tiff("TS.tiff", units="in", width=10, height=6,  res=300)
+#print(TS)
+#dev.off()
 ```
 
 ```{r fig.width=7, fig.height=5}
@@ -346,9 +346,9 @@ TA.summary$season <- factor(TA.summary$season, levels=c("Winter", "Spring", "Sum
           axis.text.x = element_text( vjust = 0.5)))
 
 TA.sum.p
-tiff("TAbar.tiff", units="in", width=10, height=6,  res=300)
-print(TA.sum.p)
-dev.off()
+#tiff("TAbar.tiff", units="in", width=10, height=6,  res=300)
+#print(TA.sum.p)
+#dev.off()
 
 (TS.sum.p <-TA.summary %>% 
   ggplot(., aes(x = GSYear, y = mean.TS), group = season) +
@@ -364,9 +364,9 @@ dev.off()
           axis.text.x = element_text( vjust = 0.5)))
 
 TS.sum.p
-tiff("TSbar.tiff", units="in", width=10, height=6,  res=300)
-print(TS.sum.p)
-dev.off()
+#tiff("TSbar.tiff", units="in", width=10, height=6,  res=300)
+#print(TS.sum.p)
+#dev.off()
 
 
 ```
@@ -402,7 +402,7 @@ VPD.p
 
 (ET.p <- ggplot(input.rearranged, aes(x = dayssinceJun1, y = ET, group = GSYear)) +
   geom_line(aes(color = GSYear), size = 1)+
-    scale_color_manual(values = group.colour) +
+    #scale_color_manual(values = group.colour) +
  # scale_x_date(date_labels = "%b", date_breaks = "1 month") +
   xlab("Days since June 1st")+
    ylab("ET (mm day-1)")+
@@ -435,7 +435,7 @@ input.rearranged$dayssinceJun1 <- as.numeric(input.rearranged$dayssinceJun1)
 
 #  ylab('SWC') +
   # scale_x_continuous()+
-    scale_color_manual(values=group.colour)+
+    #scale_color_manual(values=group.colour)+
   theme_classic() + 
     theme(axis.title = element_text(size = 14),
           axis.text = element_text(size = 13),
@@ -470,9 +470,9 @@ NEE.summary$month.name <- factor(NEE.summary$month.name, levels=c("Jun", "Jul", 
           legend.title = element_text(size = 14))
 
 NEE.bar
-tiff("NEEbar.tiff", units="in", width=10, height=6,  res=300)
-print(NEE.bar)
-dev.off()
+#tiff("NEEbar.tiff", units="in", width=10, height=6,  res=300)
+#print(NEE.bar)
+#dev.off()
 ```
 
 ```{r}
@@ -493,9 +493,9 @@ GPP.summary$season <- factor(GPP.summary$season, levels=c("Winter", "Spring", "S
   theme_classic())
 
 GPP.bar
-tiff("GPPbar.tiff", units="in", width=10, height=6,  res=300)
-print(GPP.bar)
-dev.off()
+#tiff("GPPbar.tiff", units="in", width=10, height=6,  res=300)
+#print(GPP.bar)
+#dev.off()
 ```
 
 ```{r}
@@ -519,9 +519,9 @@ ER.summary$season <- factor(ER.summary$season, levels=c("Winter", "Spring", "Sum
   theme_classic())
 
 ER.bar
-tiff("ERbar.tiff", units="in", width=10, height=6,  res=300)
-print(ER.bar)
-dev.off()
+#tiff("ERbar.tiff", units="in", width=10, height=6,  res=300)
+#print(ER.bar)
+#dev.off()
 ```
 
 
@@ -550,9 +550,9 @@ cum.co2fluxes$season <- factor(cum.co2fluxes$season, levels=c("Winter", "Spring"
 
 
 NEEcum.p
-tiff("NEEcum.tiff", units="in", width=10, height=6,  res=300)
-print(NEEcum.p)
-dev.off()
+#tiff("NEEcum.tiff", units="in", width=10, height=6,  res=300)
+#print(NEEcum.p)
+#dev.off()
 
 (GPPcum.p <-cum.co2fluxes %>% 
   ggplot(., aes(dayssinceJun1, GPPcum, color = GSYear)) +
@@ -566,9 +566,9 @@ dev.off()
           axis.text = element_text(size = 13)))
 
 GPPcum.p
-tiff("GPPcum.tiff", units="in", width=10, height=6,  res=300)
-print(GPPcum.p)
-dev.off()
+#tiff("GPPcum.tiff", units="in", width=10, height=6,  res=300)
+#print(GPPcum.p)
+#dev.off()
 
 (GPPtime.p <-input.rearranged %>% filter(GPP_LT.gC>0) %>%
   ggplot(., aes(dayssinceJun1, GPP_LT.gC, color = GSYear)) +
@@ -583,9 +583,9 @@ dev.off()
           axis.text = element_text(size = 13)))
 
 GPPtime.p
-tiff("GPPtime.tiff", units="in", width=10, height=6,  res=300)
-print(GPPtime.p)
-dev.off()
+#tiff("GPPtime.tiff", units="in", width=10, height=6,  res=300)
+#print(GPPtime.p)
+#dev.off()
 
 (ERcum.p <-cum.co2fluxes %>% 
   ggplot(., aes(dayssinceJun1, ERcum, color = GSYear)) +
@@ -600,9 +600,9 @@ dev.off()
           axis.text = element_text(size = 13)))
 
 ERcum.p
-tiff("ERcum.tiff", units="in", width=10, height=6,  res=300)
-print(ERcum.p)
-dev.off()
+#tiff("ERcum.tiff", units="in", width=10, height=6,  res=300)
+#print(ERcum.p)
+#dev.off()
 
 (ERtime.p <-input.rearranged %>% 
   ggplot(., aes(dayssinceJun1, ER_LT.gC, color = GSYear)) +
@@ -617,9 +617,9 @@ dev.off()
           axis.text = element_text(size = 13)))
 
 ERtime.p
-tiff("ERtime.tiff", units="in", width=10, height=6,  res=300)
-print(ERtime.p)
-dev.off()
+#tiff("ERtime.tiff", units="in", width=10, height=6,  res=300)
+#print(ERtime.p)
+#dev.off()
 
 
 Fig2 <- plot_grid(NEE.bar, NEEcum.p,
@@ -627,9 +627,9 @@ Fig2 <- plot_grid(NEE.bar, NEEcum.p,
 
 
 Fig2
-tiff("Fig2.tiff", units="in", width=10, height=6,  res=300)
-print(Fig2)
-dev.off()
+#tiff("Fig2.tiff", units="in", width=10, height=6,  res=300)
+#print(Fig2)
+#dev.off()
 
 ```
 
@@ -660,9 +660,9 @@ cum.co2fluxes$season <- factor(cum.co2fluxes$season, levels=c("Autumn", "Summer"
 
 
 GPP.bar.s
-tiff("GPPbar.tiff", units="in", width=10, height=6,  res=300)
-print(GPP.bar.s)
-dev.off()
+#tiff("GPPbar.tiff", units="in", width=10, height=6,  res=300)
+#print(GPP.bar.s)
+#dev.off()
 
 GPP.summary <- cum.co2fluxes %>% ddply(c("GSYear", "season"), summarise,
                                        monthly.sum = sum(GPP_LT.gC))
@@ -683,9 +683,9 @@ GPP.summary <- cum.co2fluxes %>% ddply(c("GSYear", "season"), summarise,
 
 
 ER.bar.s
-tiff("ERbar.tiff", units="in", width=10, height=6,  res=300)
-print(ER.bar.s)
-dev.off()
+#tiff("ERbar.tiff", units="in", width=10, height=6,  res=300)
+#print(ER.bar.s)
+#dev.off()
 
 ER.summary <- cum.co2fluxes %>% ddply(c("GSYear", "season"), summarise,
                                        monthly.sum = sum(ER_LT.gC))
