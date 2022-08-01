@@ -82,7 +82,7 @@ input.daily <- input %>%
   drop_na(Timestamp) %>% # some NAs in the Timestamp for some reason. Need to look into
   ddply(c("Year", "jday", "month"), summarise,
         Precip = sum(Precip, na.rm = TRUE),
-        SWin = sum(SWin),
+        SWin = sum(SWin, na.rm=TRUE),
         Ta.mean = mean(Ta, na.rm = TRUE),
         Ta.max = max(Ta, na.rm = TRUE),
         Ta.min = min(Ta, na.rm = TRUE),
@@ -118,11 +118,16 @@ Grow20.21 <- input.daily[165:529,]
 Grow20.21$dayssinceJun1 <- 1:365
 Grow20.21$GSYear <- "20/21"
 
-Grow21.22 <- input.daily[530:907,]
-Grow21.22$dayssinceJun1 <-1:378
+Grow21.22 <- input.daily[530:894,]
+Grow21.22$dayssinceJun1 <-1:365
 Grow21.22$GSYear <- "21/22"
 
-input.rearranged <- rbind(Grow19.20,Grow20.21, Grow21.22)
+Grow22.23 <- input.daily[895:945,]
+Grow22.23$dayssinceJun1 <-1:51
+Grow22.23$GSYear <- "22/23"
+
+
+input.rearranged <- rbind(Grow19.20,Grow20.21, Grow21.22, Grow22.23)
 input.rearranged$monthyear <- as.yearmon(paste(input.rearranged$month, input.rearranged$Year), "%m %Y")
 
 
@@ -133,22 +138,46 @@ start.end <- c(start.time, end.time)
 ```
 
 ```{r}
-input.rearranged$season <- "" # add season variable
+#input.rearranged$season <- "" # add season variable
 
 # define seasons
-winter <- (input.rearranged$month.name == "Jun" | input.rearranged$month.name == "Jul" | input.rearranged$month.name == "Aug")
-spring <- (input.rearranged$month.name == "Sep" | input.rearranged$month.name == "Oct" | input.rearranged$month.name == "Nov")
-summer <- (input.rearranged$month.name == "Dec" | input.rearranged$month.name == "Jan" | input.rearranged$month.name == "Feb")
-autumn <- (input.rearranged$month.name == "Mar" | input.rearranged$month.name == "Apr" | input.rearranged$month.name == "May")
+#winter <- (input.rearranged$month.name == "Jun" | input.rearranged$month.name == "Jul" | input.rearranged$month.name == "Aug")
+#spring <- (input.rearranged$month.name == "Sep" | input.rearranged$month.name == "Oct" | input.rearranged$month.name == "Nov")
+#summer <- (input.rearranged$month.name == "Dec" | input.rearranged$month.name == "Jan" | input.rearranged$month.name == "Feb")
+#autumn <- (input.rearranged$month.name == "Mar" | input.rearranged$month.name == "Apr" | input.rearranged$month.name == "May")
 
-input.rearranged$season[winter] <- "Winter"
-input.rearranged$season[spring] <- "Spring"
-input.rearranged$season[summer] <- "Summer"
+#input.rearranged$season[winter] <- "Winter"
+#input.rearranged$season[spring] <- "Spring"
+#input.rearranged$season[summer] <- "Summer"
 #input.rearranged$season[latesummer] <- "LateSummer"
-input.rearranged$season[autumn] <- "Autumn"
+#input.rearranged$season[autumn] <- "Autumn"
 
-input.rearranged$season <- factor(input.rearranged$season , levels=c('Summer', 'Autumn', 'Winter', 'Spring'))
+#input.rearranged$season <- factor(input.rearranged$season , levels=c('Summer', 'Autumn', 'Winter', 'Spring'))
 ```
+
+```{r six seasons}
+#This needs better confines - e.g. month where temps are > or < something
+
+input.rearranged$season.detail <- "" # add season variable
+
+# define seasons
+earlywinter <- (input.rearranged$month.name == "Jun" | input.rearranged$month.name == "May")
+latewinter <- (input.rearranged$month.name == "Jul" | input.rearranged$month.name == "Aug")
+spring <- (input.rearranged$month.name == "Sep" | input.rearranged$month.name == "Oct")
+earlysummer <- (input.rearranged$month.name == "Dec" | input.rearranged$month.name == "Nov")
+latesummer <- (input.rearranged$month.name == "Jan" | input.rearranged$month.name == "Feb")
+autumn <- (input.rearranged$month.name == "Mar" | input.rearranged$month.name == "Apr")
+
+input.rearranged$season.detail[latewinter] <- "LateWinter"
+input.rearranged$season.detail[earlywinter] <- "EarlyWinter"
+input.rearranged$season.detail[spring] <- "Spring"
+input.rearranged$season.detail[earlysummer] <- "EarlySummer"
+input.rearranged$season.detail[latesummer] <- "LateSummer"
+input.rearranged$season.detail[autumn] <- "Autumn"
+
+input.rearranged$season.detail <- factor(input.rearranged$season , levels=c('EarlySummer', 'LateSummer', 'Autumn', 'EarlyWinter', 'LateWinter', 'Spring'))
+```
+
 
 ## Results {.tabset}
 
@@ -170,37 +199,54 @@ rainfall_L$month.name<- month.abb[rainfall_L$month]
 rainfall_L$GSYear <- "19/20"
 
 # define seasons
-winter <- (rainfall_L$month.name == "Jun" | rainfall_L$month.name == "Jul" | rainfall_L$month.name == "Aug")
-spring <- (rainfall_L$month.name == "Sep" | rainfall_L$month.name == "Oct" | rainfall_L$month.name == "Nov")
-summer <- (rainfall_L$month.name == "Dec" | rainfall_L$month.name == "Jan" | rainfall_L$month.name == "Feb")
-autumn <- (rainfall_L$month.name == "Mar" | rainfall_L$month.name == "Apr" | rainfall_L$month.name == "May")
+#winter <- (rainfall_L$month.name == "Jun" | rainfall_L$month.name == "Jul" | rainfall_L$month.name == "Aug")
+#spring <- (rainfall_L$month.name == "Sep" | rainfall_L$month.name == "Oct" | rainfall_L$month.name == "Nov")
+#summer <- (rainfall_L$month.name == "Dec" | rainfall_L$month.name == "Jan" | rainfall_L$month.name == "Feb")
+#autumn <- (rainfall_L$month.name == "Mar" | rainfall_L$month.name == "Apr" | rainfall_L$month.name == "May")
 
-rainfall_L$season[winter] <- "Winter"
-rainfall_L$season[spring] <- "Spring"
-rainfall_L$season[summer] <- "Summer"
-rainfall_L$season[autumn] <- "Autumn"
+#rainfall_L$season[winter] <- "Winter"
+#rainfall_L$season[spring] <- "Spring"
+#rainfall_L$season[summer] <- "Summer"
+#rainfall_L$season[autumn] <- "Autumn"
 
-rainfall_L$season <- factor(rainfall_L$season , levels=c('Summer', 'Autumn', 'Winter', 'Spring'))
+#rainfall_L$season <- factor(rainfall_L$season , levels=c('Summer', 'Autumn', 'Winter', 'Spring'))
+
+# define seasons
+earlywinter <- (rainfall_L$month.name == "Jun" | rainfall_L$month.name == "May")
+latewinter <- (rainfall_L$month.name == "Jul" | rainfall_L$month.name == "Aug")
+spring <- (rainfall_L$month.name == "Sep" | rainfall_L$month.name == "Oct")
+earlysummer <- (rainfall_L$month.name == "Dec" | rainfall_L$month.name == "Nov")
+latesummer <- (rainfall_L$month.name == "Jan" | rainfall_L$month.name == "Feb")
+autumn <- (rainfall_L$month.name == "Mar" | rainfall_L$month.name == "Apr")
+
+rainfall_L$season.detail[latewinter] <- "LateWinter"
+rainfall_L$season.detail[earlywinter] <- "EarlyWinter"
+rainfall_L$season.detail[spring] <- "Spring"
+rainfall_L$season.detail[earlysummer] <- "EarlySummer"
+rainfall_L$season.detail[latesummer] <- "LateSummer"
+rainfall_L$season.detail[autumn] <- "Autumn"
+
+rainfall_L$season.detail <- factor(rainfall_L$season , levels=c('EarlyWinter', 'LateWinter', 'Spring', "EarlySummer", "LateSummer", "Autumn"))
 ```
 
 ```{r, fig.width=11, fig.height=4}
-season.colors <- c("Summer" = "#E69F00", "Autumn" = "#D55E00", "Winter" ="#0072B2", "Spring" = "#CC79A7")
+#season.colors <- c("Summer" = "#E69F00", "Autumn" = "#D55E00", "Winter" ="#0072B2", "Spring" = "#CC79A7")
 
 
-rainfall.SP <- input.rearranged %>% select(Precip, month, GSYear, season, Year, month.name)
+rainfall.SP <- input.rearranged %>% select(Precip, month, GSYear, season.detail, Year, month.name)
 
 
-rainfall <- rainfall_L %>% select(Precip, month, GSYear, season, Year, month.name) %>% rbind(., rainfall.SP)
+rainfall <- rainfall_L %>% select(Precip, month, GSYear, season.detail, Year, month.name) %>% rbind(., rainfall.SP)
 
 rainfall$monthyear <- as.yearmon(paste(rainfall$month, rainfall$Year), "%m %Y")
 
 (rainfall.season <- rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
-  ddply(c("GSYear", "season"), summarise,
+  ddply(c("GSYear", "season.detail"), summarise,
   seasonal.total = sum(Precip)) %>%
-  ggplot(., aes(x = GSYear, y = seasonal.total, group = GSYear, fill = season)) +
+  ggplot(., aes(x = GSYear, y = seasonal.total, group = GSYear, fill = season.detail)) +
        #scale_x_discrete(limits = month.abb) +
-  geom_col(aes(fill = season)) +
-        scale_fill_manual(values = season.colors)+
+  geom_col(aes(fill = season.detail)) +
+        #scale_fill_manual(values = season.colors)+
   ylab("Seasonal rainfall (mm)")+
   xlab("Growing season year")+
   theme_classic()+
@@ -235,7 +281,7 @@ dev.off()
 
 
 rainfall.summary <- rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
-  ddply(c("GSYear", "season"), summarise,
+  ddply(c("GSYear", "season.detail"), summarise,
   seasonal.total = sum(Precip))
 ```
 
