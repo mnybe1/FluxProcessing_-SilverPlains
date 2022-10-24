@@ -1,0 +1,1580 @@
+---
+title: "Paper1_V2"
+author: "Marion Nyberg"
+date: '2022-08-02'
+output: html_document
+theme: yeti 
+---
+
+```{r setup, include=FALSE, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(data.table)
+library(janitor)
+library(plotly)
+library(plyr)
+library(dplyr)
+library(knitr)
+library(tidyverse)
+#library(devtools)
+library(openair)
+library(tidyr)
+library(naniar)
+library(forecast)
+library(kableExtra)
+library(htmltools)
+library(ggpubr)
+library(rstatix)
+library(broom)
+library(gtable)
+library(gridExtra)
+library(cowplot)
+library(viridis)
+library(zoo)
+library(DT)
+library(Hmisc)
+library(MuMIn)
+library(RColorBrewer)
+#library(MASS)
+
+rm(list = ls())
+#wd <- ("R:/SET/PlantSci/Shared Work Spaces/Ecology/Flux/SP_data")
+#setwd(wd)
+#knitr::opts_knit$set(root.dir = wd)
+
+#input <- fread("R:/SET/PlantSci/Shared Work Spaces/Ecology/Peoples files/Marion Nyberg/PhD/paperone.csv", drop = 1)
+
+input <- fread("C:/Users/Marion/Documents/UTas/Papers/paperone_v2.csv", drop =1)
+```
+
+
+```{r functions and conversions, include=FALSE}
+d.avg <- 1800 * 48 #60 secs * 60 mins * 24 hours (# of secs in day)
+co2_conv <- 12.01/(10^6) 
+
+tidy.csv <- function(x){
+  input <- x[-c(1,2),] %>%
+    row_to_names(., 1)
+}  
+
+gofC.f <- function(x){ # function to convert to mean 30 minute to g of C
+  (x*d.avg)*co2_conv
+}
+
+gtomg.f <- function(x){ # function to convert from g to mg
+  x*1000
+}
+
+quadratic_fun <- function(x){
+  x^2
+}
+```
+
+```{r weird stuff in data and corrections, include=FALSE}
+input$SWC.corr <- ifelse(input$SWC >= 0.3, 0.6673*(input$SWC) + 0.2369, 
+                         0.0944+2.511*(input$SWC)-4.8425*(input$SWC)^2)
+
+input$SWin <- ifelse(input$SWin < 0, 0, input$SWin)
+input$PAR <-ifelse(input$PAR <0, 0, input$PAR)
+
+#input$PAR[which(is.na(input$PAR))] <- (-21.19 + 1.02*(input$SWin)) #not sure that this is right
+correction.par<-input$PAR[which(is.na(input$PAR))]
+input$PAR[correction.par] <-  replace_na(input$SWin[correction.par] * 4.5 * 0.5) # because NAs at same time can't fill using SWin? 
+
+plot(input$Timestamp, input$PAR)
+
+```
+
+```{r summarise data, include = FALSE}
+# add variables to this daily df as needed
+input.d <- input %>%
+  drop_na(Timestamp) %>% # some NAs in the Timestamp for some reason. Need to look into
+  ddply(c("Year", "jday", "month"), summarise,
+        Precip = sum(Precip, na.rm = TRUE),
+        SWin = sum(SWin),
+        Ta.mean = mean(Ta, na.rm = TRUE),
+        Ta.max = max(Ta, na.rm = TRUE),
+        Ta.min = min(Ta, na.rm = TRUE),
+        Ts.mean = mean(Ts, na.rm = TRUE),
+        Ts.max = max(Ts, na.rm = TRUE),
+        Ts.min = min(Ts, na.rm = TRUE),
+        SWC = mean(SWC, na.rm = TRUE),
+        SWC.corr = mean(SWC.corr, na.rm = TRUE),
+        RH = mean(RH, na.rm = TRUE),
+        VPD = mean(VPD, na.rm = TRUE),
+        ET = sum(ET*60*30, na.rm = TRUE), # /second into daily total (60 sec/min * 30 mins for each timestamp)
+        NEE_LT = mean(NEE_LT, na.rm = TRUE), #daily average umol m-2 s-1
+        ER_LT = mean(ER_LT, na.rm = TRUE),
+        ER_ngf = mean(ER_ngf, na.rm = TRUE),
+        GPP_LT = mean(GPP_LT, na.rm = TRUE)) %>%
+  mutate(NEE_LT.gC = gofC.f(NEE_LT),  #converts to daily total NEE in g C CO2
+         ER_LT.gC = gofC.f(ER_LT),
+         ER_ngf.gC = gofC.f(ER_ngf),
+         GPP_LT.gC = gofC.f(GPP_LT))
+
+input.d$month <- as.numeric(input.d$month) 
+input.d$month.name <- month.abb[input.d$month]
+input.d$date <- as.Date(with(input.d,paste(Year,month,jday,sep="-")),"%Y-%m-%j")
+input.d$Year <- as.factor(input.d$Year)
+```
+
+```{r add days since June 1 variable, include = FALSE}
+input.d$dayssinceJun1 <- ""
+
+Grow19.20 <- input.d[1:164,]
+Grow19.20$dayssinceJun1 <- 202:365
+Grow19.20$GSYear <- "19/20"
+
+Grow20.21 <- input.d[165:529,]
+Grow20.21$dayssinceJun1 <- 1:365
+Grow20.21$GSYear <- "20/21"
+
+Grow21.22 <- input.d[530:894,]
+Grow21.22$dayssinceJun1 <-1:365
+Grow21.22$GSYear <- "21/22"
+
+input.r <- rbind(Grow19.20,Grow20.21, Grow21.22)
+input.r$monthyear <- as.yearmon(paste(input.r$month, input.r$Year), "%m %Y")
+
+#start.time <- as.Date("2020-06-01", "%m-%d")
+#end.time <- as.Date("2022-05-31", "%m-%d")
+#start.end <- c(start.time, end.time)
+```
+
+```{r add seasons, include = FALSE}
+input.r$season <- "" # add season variable
+
+# define seasons (6)
+earlywinter <- (input.r$month.name == "Jun" | input.r$month.name == "Jul")
+latewinter <- (input.r$month.name == "Aug" | input.r$month.name == "Sep")
+spring <- (input.r$month.name == "Oct" | input.r$month.name == "Nov")
+earlysummer <- (input.r$month.name == "Dec" | input.r$month.name == "Jan")
+latesummer <- (input.r$month.name == "Feb" | input.r$month.name == "Mar")
+autumn <- (input.r$month.name == "Apr" |input.r$month.name == "May")
+
+#input.r$season[earlywinter] <- "EarlyWinter"
+#input.r$season[latewinter] <- "LateWinter"
+#input.r$season[spring] <- "Spring"
+#input.r$season[earlysummer] <- "EarlySummer"
+#input.r$season[latesummer] <- "LateSummer"
+#input.r$season[autumn] <- "Autumn"
+
+#input.r$season <- factor(input.r$season , levels=c('EarlyWinter', 'LateWinter', 'Spring', 'EarlySummer', 'LateSummer', 'Autumn'))
+#season.cols <- c('#91bfdb','#4575b4','#fee090', '#f46d43', '#d73027', '#8073ac')
+
+
+
+# define seasons (4)
+winter <- (input.r$month.name == "Jun" | input.r$month.name == "Jul" |input.r$month.name == "Aug")
+spring <- (input.r$month.name == "Sep"| input.r$month.name == "Oct" | input.r$month.name == "Nov")
+summer <- (input.r$month.name == "Dec" | input.r$month.name == "Jan" | input.r$month.name == "Feb")
+autumn <- (input.r$month.name == "Mar" | input.r$month.name == "Apr" |input.r$month.name == "May")
+
+input.r$season[winter] <- "Winter"
+input.r$season[spring] <- "Spring"
+input.r$season[summer] <- "Summer"
+input.r$season[autumn] <- "Autumn"
+
+input.r$season <- factor(input.r$season , levels=c('Winter', 'Spring', 'Summer', 'Autumn'))
+season.cols <- c('#91bfdb','#fee090', '#f46d43', '#8073ac')
+```
+
+```{r add lagged variables anf offset variable, echo = FALSE}
+input.r$GPP.monthLag <- Lag(input.r$GPP_LT.gC, shift = +30)
+input.r$ER.monthLag <- Lag(input.r$ER_LT.gC, shift = +30)
+input.r$GPP_offset <- input.r$GPP_LT.gC + 1.25
+input.r$ER_ngf.gC <- ifelse(input.r$ER_ngf.gC <0, NA, input.r$ER_ngf.gC)
+
+```
+
+## Data {.tabset}
+
+### Met/Env. variables {.tabset}
+
+#### Air Temperature 
+
+```{r Temperature, echo = FALSE, fig.cap= "Mean daily air temperature at the Silver Plains EC tower. Dark line is mean, shading is mean max and min."}
+(TA <- ggplot(input.d, aes(x = date, y = Ta.mean)) +
+   geom_point(size = 0.001)+
+   geom_line(size = 0.72)+
+        geom_ribbon(aes(ymin=Ta.min, ymax=Ta.max), alpha=.3, linetype=0) +
+    xlab("Date")+
+    ylab("Air temperature (°C)")+
+     scale_x_date(limit = c(as.Date("2019-06-01"), c(as.Date("2022-05-31"))), expand = c(0, 0))+
+   #scale_x_date(limit=c(as.Date("2017-01-01"),as.Date("2017-02-11"))) 
+  theme_classic()+
+    theme(axis.title = element_text(size = 16),
+          axis.text = element_text(size = 15),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14)))
+ggplotly(TA)
+
+alltogher <- input.d %>% group_by(jday)  %>%
+  summarise(mean(Ta.mean))
+
+input.d %>% group_by(month, Year)  %>%
+  summarise(mean(Ta.min))
+```
+
+
+
+
+```{r echo = FALSE, fig.cap= "Mean daily air temperature at the Silver Plains EC tower by growing season year"}
+TA.GSYear <- ggplot(input.r, aes(x = dayssinceJun1, y = Ta.mean), group = GSYear) +
+   #geom_point(aes(color = GSYear))+
+   geom_line(aes(color = GSYear))+
+        #geom_ribbon(aes(ymin=Ta.min, ymax=Ta.max), alpha=.3, linetype=0) +
+    xlab("Days since June 1")+
+    ylab("Air temperature (°C)")+
+  theme_classic()+
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14))
+
+ggplotly(TA.GSYear)
+
+```
+
+#### Soil temperature
+
+```{r soil temperature, echo = FALSE, fig.cap= "Mean daily soil temperature at 5cm at the Silver Plains EC tower. Dark line is mean, shading is mean max and min."}
+(TS <- ggplot(input.d, aes(x = date, y = Ts.mean)) +
+   geom_point(size = 0.001)+
+   geom_line(size = 0.72)+
+        geom_ribbon(aes(ymin=Ts.min, ymax=Ts.max), alpha=.3, linetype=0) +
+        scale_x_date(limit = c(as.Date("2019-06-01"), c(as.Date("2022-05-31"))), expand = c(0, 0))+
+    xlab("Date")+
+    ylab("10-cm soil temperature (°C)")+
+  theme_classic()+
+    theme(axis.title = element_text(size = 16),
+          axis.text = element_text(size = 15),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14)))
+
+input.d %>% group_by(month, Year) %>%
+  summarise(mean(Ts.min))
+
+
+alltogher <- input.d %>% group_by(jday)  %>%
+  summarise(mean(Ts.mean))
+
+
+```
+
+
+```{r soil t, echo = FALSE}
+
+(TS.GSYear <- ggplot(input.r, aes(x = dayssinceJun1, y = Ts.mean), group = GSYear) +
+   #geom_point(aes(color = GSYear))+
+   geom_line(aes(color = GSYear))+
+        #geom_ribbon(aes(ymin=Ta.min, ymax=Ta.max), alpha=.3, linetype=0) +
+    xlab("Days since June 1")+
+    ylab("Air temperature (°C)")+
+  theme_classic()+
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14)))
+```
+
+
+
+#### Precipitation
+
+```{r Precipitation, echo=FALSE, message = FALSE}
+#below is precip data from liaweenee - it only goes up to Jan 2022 right now
+rainfall_L <- read.csv("C:/Users/Marion/Documents/UTas/Papers/rainfall.csv")
+#rainfall_L <- read.csv("G:/Other computers/My Laptop/Documents/UTas/Papers/rainfall.csv")
+rainfall_L <- rainfall_L[-4]
+colnames(rainfall_L)[4] <- "Precip"
+rainfall_L$Year <- as.factor(rainfall_L$Year)
+rainfall_L <- rainfall_L %>% filter(Year == 2019)
+colnames(rainfall_L)[1] <- "jday"
+colnames(rainfall_L)[3] <- "month"
+rainfall_L$Site <- "L"
+rainfall_L <- rainfall_L %>% filter(month >= 6)
+rainfall_L$month <- as.numeric(rainfall_L$month) 
+rainfall_L$month.name<- month.abb[rainfall_L$month]
+rainfall_L$GSYear <- "19/20"
+
+#earlywinter <- (rainfall_L$month.name == "Jun" | rainfall_L$month.name == "Jul")
+#latewinter <- (rainfall_L$month.name == "Aug" | rainfall_L$month.name == "Sep")
+#spring <- (rainfall_L$month.name == "Oct" | rainfall_L$month.name == "Nov")
+#earlysummer <- (rainfall_L$month.name == "Dec" | rainfall_L$month.name == "Jan")
+#latesummer <- (rainfall_L$month.name == "Feb" | rainfall_L$month.name == "Mar")
+#autumn <- (rainfall_L$month.name == "Apr" |rainfall_L$month.name == "May")
+
+#rainfall_L$season[earlywinter] <- "EarlyWinter"
+#rainfall_L$season[latewinter] <- "LateWinter"
+#rainfall_L$season[spring] <- "Spring"
+#rainfall_L$season[earlysummer] <- "EarlySummer"
+#rainfall_L$season[latesummer] <- "LateSummer"
+#rainfall_L$season[autumn] <- "Autumn"
+
+# define seasons (4)
+winter <- (rainfall_L$month.name == "Jun" | rainfall_L$month.name == "Jul" |rainfall_L$month.name == "Aug")
+spring <- (rainfall_L$month.name == "Sep"| rainfall_L$month.name == "Oct" | rainfall_L$month.name == "Nov")
+summer <- (rainfall_L$month.name == "Dec" | rainfall_L$month.name == "Jan" | rainfall_L$month.name == "Feb")
+autumn <- (rainfall_L$month.name == "Mar" | rainfall_L$month.name == "Apr" |rainfall_L$month.name == "May")
+
+rainfall_L$season[winter] <- "Winter"
+rainfall_L$season[spring] <- "Spring"
+rainfall_L$season[summer] <- "Summer"
+rainfall_L$season[autumn] <- "Autumn"
+
+rainfall_L$season <- factor(rainfall_L$season , levels=c('Winter', 'Spring', 'Summer', 'Autumn'))
+season.cols <- c('#91bfdb','#fee090', '#f46d43', '#8073ac')
+
+
+
+rainfall.SP <- input.r %>% select(Precip, month, GSYear, season, Year, month.name)
+rainfall <- rainfall_L %>% select(Precip, month, GSYear, season, Year, month.name) %>% rbind(., rainfall.SP)
+
+
+#rainfall$season <- factor(rainfall$season , levels=c('EarlyWinter', 'LateWinter', 'Spring', 'EarlySummer', 'LateSummer', 'Autumn'))
+rainfall$season <- factor(rainfall$season , levels=c('Winter', 'Spring', 'Summer', 'Autumn'))
+
+
+
+rainfall$monthyear <- as.yearmon(paste(rainfall$month, rainfall$Year), "%m %Y")
+
+(rainfall.p <-rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
+  ddply(c("monthyear", "Year"), summarise,
+  monthly.total = sum(Precip)) %>%
+  ggplot(., aes(x = monthyear, y = monthly.total)) +
+  geom_col(position = "dodge") +
+  scale_x_yearmon(n = 7, expand = c(0,0))+
+  ylab("Monthly rainfall (mm)")+
+  xlab("Date")+
+  theme_classic()+
+    theme(axis.title = element_text(size = 16),
+          axis.text = element_text(size = 15),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14),
+          #axis.text.x = element_text( vjust = 0.5)
+        ))
+
+
+alltogherrain <- rainfall%>% group_by(GSYear, month)  %>%
+  summarise(sum(Precip, na.rm = TRUE))
+```
+
+
+
+
+```{r Precip, echo=FALSE, fig.align='left'}
+(rainfall.season <- rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
+  ddply(c("GSYear", "season"), summarise,
+  seasonal.total = sum(Precip)) %>%
+  ggplot(., aes(x = GSYear, y = seasonal.total, group = GSYear, fill = season)) +
+       #scale_x_discrete(limits = month.abb) +
+  geom_col(aes(fill = season)) +
+        #scale_fill_manual(values = season.colors)+
+  ylab("Seasonal rainfall (mm)")+
+  xlab("Growing season year")+
+  theme_classic()+
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14)))
+
+```
+
+
+```{r, echo=FALSE}
+rainfall %>%  mutate(Precip = replace_na(Precip, 0)) %>%
+  ddply(c("GSYear", "season"), summarise,
+  seasonal.total = sum(Precip)) %>%
+  datatable(rownames = FALSE, colnames = c("Year", "Season", "Total Precipitation"), class = "hover")  %>%
+    formatRound(columns=c('seasonal.total'), digits=3)
+ # kbl(col.names = c("Year", "Season", "Total precipitation"), centering = F) %>%
+#  kable_minimal( )
+```
+
+
+
+
+
+#### SWC 
+
+```{r SWC, echo=FALSE}
+(SWC.20 <- input.r  %>% ggplot(., aes(dayssinceJun1, SWC.corr), group = GSYear) +
+  geom_line(aes(color = GSYear))+
+   scale_x_continuous(limits = c(1, 365))+
+  xlab('Days since June 1st') +
+        ylab(bquote('SWC ('~m^-3~'/'~m^-3~')'))+
+    #scale_color_manual(values=group.colour)+
+  theme_classic() + 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13)))
+
+
+(SWC.time <- ggplot(input.d, aes(x = date, y = SWC.corr)) +
+   geom_point(size = 0.001)+
+   geom_line(size = 0.72)+
+    xlab("Date")+
+         scale_x_date(limit = c(as.Date("2019-06-01"), c(as.Date("2022-05-31"))), expand = c(0, 0))+
+ylab(bquote('SWC ('~m^-3~'/'~m^-3~')'))+
+  theme_classic()+
+    theme(axis.title = element_text(size = 16),
+          axis.text = element_text(size = 15),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14)))
+
+SWC <- input.r %>% group_by(GSYear, month)  %>%
+  summarise(mean(SWC, na.rm = TRUE))
+```
+
+#### Incoming SW radiation 
+
+```{r SWin, echo=FALSE, fig.cap= "Total daily incoming SW radiation."}
+(SWin <- input.d %>% filter(SWin > 0) %>% ggplot(., aes(x = date, y = SWin)) +
+   geom_line()+
+    xlab("Date")+
+    ylab("Incoming SW radiation (W m-2)")+
+  theme_classic()+
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14)))
+
+```
+
+
+```{r SW, echo=FALSE, fig.cap= "Total daily incoming SW radiation by growing season year."}
+SWin.GSYear <- input.r %>% filter(SWin >0 ) %>% ggplot(., aes(x = dayssinceJun1, y = SWin), group = GSYear) +
+   #geom_point(aes(color = GSYear))+
+   geom_line(aes(color = GSYear))+
+        #geom_ribbon(aes(ymin=Ta.min, ymax=Ta.max), alpha=.3, linetype=0) +
+    xlab("Days since June 1")+
+    ylab("Incoming SW radiation (W m-2)")+
+  theme_classic()+
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14))
+
+ggplotly(SWin.GSYear)
+```
+
+#### Evapotranspiration
+
+
+```{r ET, echo=FALSE, , fig.cap= "Total daily evapotranspiration."}
+input.r %>% select(ET ,dayssinceJun1, GSYear) %>% 
+  group_by(GSYear) %>% 
+   ddply(c("GSYear"), summarise,
+  annual.total = sum(ET)) %>%
+  datatable(colnames = c("Year", "Total ET"), class = "compact")%>%
+    formatRound(columns=c('annual.total'), digits=3)
+
+
+
+(ET <- input.d %>% ggplot(., aes(x = date, y = ET)) +
+   geom_line()+
+         scale_x_date(limit = c(as.Date("2019-06-01"), c(as.Date("2022-05-31"))), expand = c(0, 0))+
+    xlab("Date")+
+    ylab("Daily total ET (mm) ")+
+  theme_classic()+
+    theme(axis.title = element_text(size = 16),
+          axis.text = element_text(size = 15),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14)))
+
+ET.GSYear <- input.r  %>% ggplot(., aes(dayssinceJun1, ET), group = GSYear) +
+  geom_line(aes(color = GSYear))+
+   scale_x_continuous(limits = c(1, 365))+
+  xlab('Days since June 1st') +
+        ylab("Daily total ET (mm)")+
+    #scale_color_manual(values=group.colour)+
+  theme_classic() + 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.position = "none")
+
+ggplotly(ET.GSYear)
+
+(ET.season <- input.r %>% 
+  ddply(c("GSYear", "season"), summarise,
+  seasonal.total = sum(ET)) %>%
+  ggplot(., aes(x = GSYear, y = seasonal.total, group = GSYear, fill = season)) +
+       #scale_x_discrete(limits = month.abb) +
+  geom_col(aes(fill = season)) +
+        #scale_fill_manual(values = season.colors)+
+  ylab("Seasonal evapotranspiration")+
+  xlab("Growing season year")+
+  theme_classic()+
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14)))
+
+ET <- input.r %>% group_by(GSYear, month)  %>%
+  summarise(sum(ET, na.rm = TRUE))
+```
+
+### CO2 fluxes {.tabset}
+
+#### NEE {.tabset}
+
+```{r timeseries fluxes, echo = FALSE}
+(NEEtime.p <-input.r%>%
+  ggplot(., aes(dayssinceJun1, NEE_LT.gC, color = GSYear)) +
+  geom_line()+
+        #scale_color_manual(values = group.colour)+
+       scale_x_continuous(limits = c(1, 365))+
+
+  ylab(bquote(' NEE (g C ' ~m^-2~')'))+
+  xlab("Days since June 1st")+
+  theme_classic()+ 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13)))
+```
+
+
+```{r cumulative fluxes, echo = FALSE, message=FALSE}
+cum.co2fluxes <- input.r %>%
+  select(NEE_LT.gC, GPP_LT.gC, ER_LT.gC, dayssinceJun1, GSYear, season) %>% 
+  group_by(GSYear) %>% 
+  mutate(NEEcum = cumsum(NEE_LT.gC),
+         GPPcum = cumsum(GPP_LT.gC),
+         ERcum = cumsum(ER_LT.gC))
+
+cum.co2fluxes$season <- factor(cum.co2fluxes$season, levels=c("Winter", "Spring", "Summer", "Autumn"))
+
+
+(NEEcum.p <-cum.co2fluxes %>% 
+  ggplot(., aes(dayssinceJun1, NEEcum, group = GSYear, color = GSYear)) +
+  geom_line(size = 1, aes(color = GSYear))+
+   # scale_color_manual(values = group.colour)+
+       scale_x_continuous(limits = c(1, 365))+
+  ylab(bquote('Cumulative NEE (g C ' ~m^-2~')'))+
+  xlab("Days since June 1st")+
+  theme_classic()+ 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13)))
+
+
+#CO2 <- cum.co2fluxes %>% group_by(GSYear)  %>% filter (season == "Spring" | season == "EarlySummer" | season == "LateSummer") %>%
+ #   summarise(sum(NEE_LT.gC))
+
+#CO2.winter <- cum.co2fluxes %>% group_by(GSYear)  %>% filter (season == "EarlyWinter" | season == "LateWinter" | season == "Autumn") %>%
+  #  summarise(sum(NEE_LT.gC))
+```
+### check data 
+
+```{r check distribution}
+library(MASS)
+library(ggpubr)
+#GPP
+qqnorm(input.r$GPP_offset)
+bc <- boxcox(input.r$GPP_offset ~ input.r$Ta.mean)
+(lambda <- bc$x[which.max(bc$y)])
+
+GPP.1 <- lm((GPP_offset^lambda-1)/lambda~Ta.mean, input.r)
+GPP.1log <- lm(log(GPP_offset)~Ta.mean, input.r)
+
+#hist((input.r$GPP_offset^lambda-1)) # Positive / right skewed
+qqnorm(GPP.1$residuals)
+qqline(GPP.1$residuals)
+
+qqnorm(GPP.1log$residuals)
+qqline(GPP.1log$residuals)
+# For GPP could be log or lambda value
+
+
+#ER
+qqnorm(input.r$ER_ngf.gC)
+
+bc <- boxcox(input.r$ER_ngf.gC ~ input.r$Ts.mean)
+(lambda <- bc$x[which.max(bc$y)])
+
+ER.1 <- lm((ER_ngf.gC^lambda-1)/lambda~Ts.mean, input.r)
+ER.1log <- lm(log(ER_ngf.gC)~Ts.mean, input.r)
+
+hist((input.r$ER_ngf.gC^lambda-1)/lambda) # Positive / right skewed
+hist(log(input.r$ER_ngf.gC))
+qqnorm(ER.1$residuals)
+qqline(ER.1$residuals)
+
+qqnorm(ER.1log$residuals)
+qqline(ER.1log$residuals)
+```
+
+#### GPP
+
+__Seasonal total GPP__
+
+```{r GPP, echo = FALSE, message=FALSE}
+
+GPP.summary<- cum.co2fluxes %>% select(GPP_LT.gC,dayssinceJun1, GSYear, season) %>% 
+  group_by(GSYear, season) %>% 
+   ddply(c("GSYear", "season"), summarise,
+  seasonal.total = sum(GPP_LT.gC))
+
+cum.co2fluxes$season <- factor(cum.co2fluxes$season, levels=c("Autumn", "Summer", "Spring", "Winter"))
+#cum.co2fluxes$season <- factor(cum.co2fluxes$season , levels=c('Autumn', 'LateSummer', 'EarlySummer', 'Spring', 'LateWinter', 'EarlyWinter'))
+
+
+(GPP.bar.s <- cum.co2fluxes  %>%
+  ggplot(., aes(fill = season, x = GSYear, y = GPP_LT.gC)) +
+  #geom_col(aes(fill = season)) + 
+    geom_bar(position = "stack", stat = "identity") +
+         #scale_x_discrete(limits = start.end)+
+  xlab("Growing season year")+
+         ylab(bquote('Total seasonal GPP (g C ' ~m^-2~')'))+
+    #scale_fill_manual(values = season.colors)+
+  theme_classic()) +
+  theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14))
+
+GPP <- cum.co2fluxes %>% group_by(GSYear)  %>% filter (season == "Spring" | season == "EarlySummer" | season == "LateSummer") %>%
+    summarise(sum(GPP_LT.gC))
+
+GPP.winter <- cum.co2fluxes %>% group_by(GSYear)  %>% filter (season == "EarlyWinter" | season == "LateWinter" | season == "Autumn") %>%
+    summarise(sum(GPP_LT.gC))
+
+```
+
+
+__Daily mean GPP and env. variables__ 
+
+
+```{r daily GPP env, eval=FALSE, message=FALSE, include=FALSE}
+ggplot(input.r, aes(SWC, GPP_LT.gC)) +
+  geom_point(aes(color = season))+
+  geom_smooth(method = lm, aes(color = season))+
+ scale_x_continuous(breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9))+
+  ylab("Daily mean GPP (g C m-2)")+
+  xlab('Mean daily SWC')+
+  theme_classic()
+
+ggplot(input.r, aes(ET, GPP_LT.gC)) +
+  geom_point(aes(color = season))+
+  geom_smooth(method = lm, aes(color = season))+
+  ylab("Daily mean GPP (g C m-2)")+
+  xlab('Total daily ET')+
+ #scale_x_continuous(breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9))+
+  theme_classic()
+
+
+```
+
+
+
+__Monthly GPP__
+
+```{r monthly GPP env, echo = FALSE, message = FALSE, fig.height=8, fig.width=7}
+season.cols <- c('#4575b4', '#f46d43', '#d73027', '#8073ac')
+
+
+
+
+summary.month<- input.r %>% dplyr::select(GPP_LT.gC, GPP_offset, ER_LT.gC, ER_ngf.gC, dayssinceJun1, GSYear, season, month, ET, SWC.corr, Precip, Ta.mean, Ts.mean, SWin) %>% 
+  group_by(GSYear, month) %>% 
+   ddply(c("GSYear", "season", "month"), summarise,
+  GPP = sum(GPP_LT.gC),
+  GPP_offset = sum(GPP_offset),
+  ER = sum(ER_LT.gC),
+  ET = sum(ET),
+  SWC = mean(SWC.corr),
+  Precip = sum(Precip),
+  TA = mean(Ta.mean),
+  TS = mean(Ts.mean), 
+  SWin = mean(SWin))
+
+#ggplot(GPP.summary.month, aes(ET.month, seasonal.total)) +
+ # geom_point(aes(color = season))+
+  ##geom_smooth(method = lm, aes(color = season))+
+  #ylab("Daily mean GPP (g C m-2)")+
+  #xlab('Total daily ET')+
+ #scale_x_continuous(breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9))+
+  #theme_classic()
+
+(TA.GPP <- ggplot(summary.month, aes(TA, GPP)) +
+  geom_point(aes(color = GSYear), size = 4) +
+  geom_smooth(method = "lm", se = F, aes(color = GSYear)) +
+  #geom_smooth(span = 1.5, color = "black", se = F) +
+                 ylab(bquote('GPP  (g C ' ~m^-2~'' ~month^-1~')'))+
+    xlab("Air temperature (°C)")+
+    ggtitle("a") +
+    scale_color_manual(values = season.cols) + 
+  theme_classic() +
+    theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+TS.GPP <- ggplot(summary.month, aes(TS, GPP)) +
+  geom_point(aes(color = season)) +
+  geom_smooth(method = "lm", se = F, aes(color = season)) +
+    scale_color_manual(values = season.cols) + 
+  theme_classic()+
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)) 
+
+P.GPP <- ggplot(summary.month, aes(Precip, GPP)) +
+  geom_point(aes(color = season)) +
+    geom_smooth(method = "lm", se = F, aes(color = season)) +
+    scale_color_manual(values = season.cols) + 
+  theme_classic()
+
+(ET.GPP <- ggplot(summary.month, aes(ET, GPP)) +
+  geom_point(aes(color = GSYear), size = 4) +
+    geom_smooth(method = "lm", se = F, aes(color = GSYear)) +
+  #geom_smooth(span = 1.3, color = "black", se = F) +
+    scale_color_manual(values = season.cols) + 
+               ylab(bquote('GPP  (g C ' ~m^-2~'' ~month^-1~')'))+
+        xlab("ET (mm)") +
+    ggtitle("c") +
+  theme_classic()+
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13),
+         legend.key.size = unit(1, 'cm'),
+        legend.title = element_text(size = 13),
+        legend.text = element_text(size = 13))+
+    guides(color=guide_legend(title="Year")))
+
+
+(SWC.GPP <- ggplot(summary.month, aes(SWC, GPP)) +
+  geom_point(aes(color = GSYear), size = 4) +
+   # geom_smooth(span = 1.3, se = F, aes(color = GSYear)) +
+    stat_smooth(method = lm, formula = y ~ poly(x, 2, raw = TRUE), se = F, aes(color = GSYear)) +
+  #geom_smooth(span = 1.3, color = "black", se = F) +
+    scale_color_manual(values = season.cols) + 
+               ylab(bquote('GPP  (g C ' ~m^-2~'' ~month^-1~')'))+
+            xlab(bquote('SWC ('~m^-3~'/'~m^-3~')'))+
+    ggtitle("b") +
+  theme_classic()+
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+(SWin.GPP <- ggplot(summary.month, aes(SWin, GPP)) +
+  geom_point(aes(color = GSYear), size = 4) +
+  #geom_smooth(span = 1.3, color = "black", se = F) + 
+    geom_smooth(method = "lm", se = F, aes(color = GSYear)) +
+    scale_color_manual(values = season.cols) + 
+                 ylab(bquote('GPP (g C ' ~m^-2~'' ~month^-1~')'))+
+    xlab(bquote('Incoming SW radiation (W' ~m^-2~')')) + 
+  theme_classic()+
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+
+GPP.leg.month <- get_legend(ET.GPP)
+
+GPP.env.plots <- plot_grid(TS.GPP + theme(legend.position = 'none'), 
+          ET.GPP+ theme(legend.position = 'none'), SWC.GPP+ theme(legend.position = 'none'), SWin.GPP+ theme(legend.position = 'none'), GPP.leg.month, ncol = 2)
+
+```
+
+
+__GPP lagged by 1 month__
+
+```{r lag GPP, , echo = FALSE, message = FALSE, eval = FALSE, fig.height=8, fig.width=7} 
+TA.GPPL <- ggplot(summary.month, aes(TA, GPPlag)) +
+  geom_point(aes(color = season)) +
+  geom_smooth(method = "lm", se = F, aes(color = season)) +
+    scale_color_manual(values = season.cols) + 
+  theme_classic() 
+
+TS.GPPL <- ggplot(summary.month, aes(TS, GPPlag)) +
+  geom_point(aes(color = season)) +
+  geom_smooth(method = "lm", se = F, aes(color = season)) +
+    scale_color_manual(values = season.cols) + 
+  theme_classic() 
+
+P.GPPL <- ggplot(summary.month, aes(Precip, GPPlag)) +
+  geom_point(aes(color = season)) +
+    geom_smooth(method = "lm", se = F, aes(color = season)) +
+    scale_color_manual(values = season.cols) + 
+  theme_classic()
+
+ET.GPPL <- ggplot(summary.month, aes(ET, GPPlag)) +
+  geom_point(aes(color = season)) +
+    geom_smooth(method = "lm", se = F, aes(color = season)) +
+    scale_color_manual(values = season.cols) + 
+  theme_classic()
+
+SWC.GPPL <- ggplot(summary.month, aes(SWC, GPPlag)) +
+  geom_point(aes(color = season)) +
+    geom_smooth(method = "lm", se = F, aes(color = season)) +
+    scale_color_manual(values = season.cols) + 
+  theme_classic()
+
+SWin.GPPL <- ggplot(summary.month, aes(SWin, GPPlag)) +
+  geom_point(aes(color = season)) +
+    geom_smooth(method = "lm", se = F, aes(color = season)) +
+    scale_color_manual(values = season.cols) + 
+  theme_classic()
+
+
+plot_grid(TA.GPPL + theme(legend.position = 'none'), TS.GPPL + theme(legend.position = 'none'), 
+          P.GPPL + theme(legend.position = 'none'), 
+          ET.GPPL+ theme(legend.position = 'none'), SWC.GPPL+ theme(legend.position = 'none'), SWin.GPPL+ theme(legend.position = 'none'), GPP.leg.month, ncol = 2)
+```
+
+
+#### ER
+
+__Seasonal total ER__
+
+```{r ER, echo = FALSE, message=FALSE}
+
+ER.summary<- cum.co2fluxes %>% select(ER_LT.gC,dayssinceJun1, GSYear, season) %>% 
+  group_by(GSYear, season) %>% 
+   ddply(c("GSYear", "season"), summarise,
+  seasonal.total = sum(ER_LT.gC))
+
+cum.co2fluxes$season <- factor(cum.co2fluxes$season, levels=c("Autumn", "Summer", "Spring", "Winter"))
+#cum.co2fluxes$season <- factor(cum.co2fluxes$season , levels=c('Autumn', 'LateSummer', 'EarlySummer', 'Spring', 'LateWinter', 'EarlyWinter'))
+
+
+(ER.bar.s <- cum.co2fluxes  %>%
+  ggplot(., aes(fill = season, x = GSYear, y = ER_LT.gC)) +
+  #geom_col(aes(fill = season)) + 
+    geom_bar(position = "stack", stat = "identity") +
+         #scale_x_discrete(limits = start.end)+
+  xlab("Growing season year")+
+         ylab(bquote('Total seasonal  (g C ' ~m^-2~')'))+
+    #scale_fill_manual(values = season.colors)+
+  theme_classic()) +
+  theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13),
+          legend.text = element_text(size = 13),
+          legend.title = element_text(size = 14))
+
+ER <- cum.co2fluxes %>% group_by(GSYear)  %>% filter (season == "Spring" | season == "EarlySummer" | season == "LateSummer") %>%
+    summarise(sum(ER_LT.gC))
+
+ER.winter <- cum.co2fluxes %>% group_by(GSYear)  %>% filter (season == "EarlyWinter" | season == "LateWinter" | season == "Autumn") %>%
+    summarise(sum(ER_LT.gC))
+
+```
+
+
+__Daily mean ER and env. variables__ 
+
+
+```{r daily ER env, echo=FALSE, message=FALSE}
+ggplot(input.r, aes(SWC, ER_LT.gC)) +
+  geom_point(aes(color = season))+
+  geom_smooth(method = lm, aes(color = season))+
+ scale_x_continuous(breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9))+
+  ylab("Daily mean ER (g C m-2)")+
+  xlab('Mean daily SWC')+
+  theme_classic()
+
+ggplot(input.r, aes(Ts.mean, ER_LT.gC)) +
+  geom_point(aes(color = season))+
+  #geom_smooth(method = lm, aes(color = season))+
+ scale_x_continuous(breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9))+
+  ylab("Daily mean ER (g C m-2)")+
+  xlab('Mean daily SWC')+
+  theme_classic()
+
+ggplot(input.r, aes(ET, ER_LT.gC)) +
+  geom_point(aes(color = season))+
+  #geom_smooth(method = lm, aes(color = season))+
+  ylab("Daily mean ER (g C m-2)")+
+  xlab('Total daily ET')+
+ #scale_x_continuous(breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9))+
+  theme_classic()
+
+```
+
+__Monthly mean ER__
+
+```{r monthly ER env, echo = FALSE, message = FALSE, fig.height=8, fig.width=7}
+season.cols <- c('#4575b4', '#f46d43', '#d73027', '#8073ac')
+
+#ggplot(ER.summary.month, aes(ET.month, seasonal.total)) +
+ # geom_point(aes(color = season))+
+  ##geom_smooth(method = lm, aes(color = season))+
+  #ylab("Daily mean ER (g C m-2)")+
+  #xlab('Total daily ET')+
+ #scale_x_continuous(breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9))+
+  #theme_classic()
+
+(TA.ER <- ggplot(summary.month, aes(TA, ER)) +
+  geom_point(aes(color = GSYear)) +
+  geom_smooth(method = "lm", se = F, aes(color = GSYear)) +
+  scale_color_manual(values = season.cols) + 
+  theme_classic()+
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+(TS.ER <- ggplot(summary.month, aes(TS, ER)) +
+  geom_point(aes(color = GSYear), size = 4) +
+  geom_smooth(method = "lm", span = 1.3, se = F, aes(color = GSYear)) +
+    #geom_smooth(span  = 1.3, se = F, color = "black") +
+    scale_color_manual(values = season.cols) + 
+             ylab(bquote('ER  (g C ' ~m^-2~'' ~month^-1~')'))+
+    xlab("10-cm soil temperature (°C)")+
+  theme_classic() +
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+
+P.ER <- ggplot(summary.month, aes(Precip, ER)) +
+  geom_point(aes(color = season)) +
+    geom_smooth(method = "lm", se = F, aes(color = season)) +
+    scale_color_manual(values = season.cols) + 
+  theme_classic()+
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13))
+
+(ET.ER <- ggplot(summary.month, aes(ET, ER)) +
+  geom_point(aes(color = GSYear), size = 4) +
+    geom_smooth(method = "lm", span = 1.3, se = F, aes(color = GSYear)) +
+    #geom_smooth(span = 1.3, se = F, color = "black") +
+    scale_color_manual(values = season.cols) + 
+                 ylab(bquote('ER  (g C ' ~m^-2~'' ~month^-1~')'))+
+    xlab("ET (mm)") +
+  theme_classic()+
+  theme(legend.key.size = unit(1, 'cm'),
+        legend.title = element_text(size = 13),
+        legend.text = element_text(size = 13))+
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13))+
+    guides(color=guide_legend(title="Season")))
+
+SWCER.int <- -2.63 
+SWCER.coeff1 <- 15.39 
+SWCER.coeff2 <- -13.84 
+
+(SWC.ER <- ggplot(summary.month, aes(SWC, ER)) +
+  geom_point(aes(color = GSYear), size = 4) +
+    #geom_smooth(span = 1.5, se = F, aes(color = GSYear)) +
+    #stat_function(fun=function(x) SWCER.int +(SWCER.coeff1*x) + x^2)+
+   #geom_smooth(span = 1, se = F, color = "black")+
+    stat_smooth(method = lm, formula = y ~  poly(x, 2, raw = TRUE), se = F, aes(color = GSYear)) + 
+    scale_color_manual(values = season.cols) + 
+                 ylab(bquote('ER  (g C ' ~m^-2~'' ~month^-1~')'))+
+            xlab(bquote('SWC ('~m^-3~'/'~m^-3~')'))+
+  theme_classic()+
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+ER.leg.month <- get_legend(ET.ER)
+
+(ER.env.plots <- plot_grid(TS.ER + theme(legend.position = 'none'), 
+          ET.ER+ theme(legend.position = 'none'),SWC.ER+ theme(legend.position = 'none'), ER.leg.month, ncol = 2))
+
+```
+
+
+### For publication
+
+```{r for publication climatic, fig.height = 12, fig.width= 12}
+
+#plot_grid(ER.TS5.P.d + theme(legend.position = 'none', axis.title.y = element_text(margin = margin(r = 0))), ER.WTH.P + #theme(legend.position = 'none'), p2a_legend,
+ #                 Temp.logCH4D+ theme(legend.position = 'none', axis.title.y = element_text(margin = margin(r = 5))), WTH.logCH4D + #theme(legend.position = 'none', axis.title.y = element_text(margin = margin(r = 5))), NULL,
+ #                
+  #         hjust = -1,
+   #        nrow = 2, ncol = 3, rel_widths = c(1,1, 0.3), rel_heights = c(1,1))
+                   
+
+(climate.plots <- plot_grid(
+  TA+ theme(axis.title.y = element_text(margin = margin(r = 18)), axis.title.x = element_blank(), axis.text.x = element_blank()), 
+  TS + theme(axis.title.y = element_text(margin = margin(r = 22)), axis.text.x = element_blank(), axis.title.x = element_blank()), 
+  rainfall.p + theme(axis.title.y = element_text(margin = margin(r = 13)), axis.text.x = element_blank(), axis.title.x = element_blank()),
+  SWC.time + theme(axis.title.y = element_text(margin = margin(r = 8)), axis.title.x = element_blank(), axis.text.x = element_blank()),
+  ET+ theme(axis.title.y = element_text(margin = margin(r = 29))),
+   ncol = 1, rel_heights = c(0.2,.2, 0.2, 0.2, 0.25)))
+
+tiff("climate.tiff", units="in", width=15, height=15,  res=300)
+print(climate.plots)
+dev.off()
+```
+
+```{r for publication cumulative and daily co2}
+GSYear.cols <- c('#f46d43', '#4575b4', '#91bfdb')
+
+
+(NEEcum.p <-cum.co2fluxes %>% 
+  ggplot(., aes(dayssinceJun1, NEEcum, group = GSYear, color = GSYear)) +
+  geom_line(size = 1, aes(color = GSYear))+
+   # scale_color_manual(values = group.colour)+
+       scale_x_continuous(limits = c(1, 365))+
+    scale_color_manual(values = GSYear.cols)+
+  ylab(bquote('Cumulative NEE (g C ' ~m^-2~')'))+
+  xlab("Days since June 1st")+
+  theme_classic()+ 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13)))
+
+
+
+monthlycumsum <- input.r %>%
+  select(NEE_LT.gC, GPP_LT.gC, ER_LT.gC, dayssinceJun1, GSYear, season, month) %>% 
+  group_by(GSYear, month) %>% 
+  ddply(c("month", "GSYear"), summarise,
+        NEE = sum(NEE_LT.gC),
+         GPP = sum(GPP_LT.gC),
+         ER = sum(ER_LT.gC),
+        GPPneg = -1*sum(GPP_LT.gC))
+
+monthlycumsum$month <- as.factor(monthlycumsum$month)
+monthlycumsum$month <- factor(monthlycumsum$month, levels=c('6', '7', '8', '9', '10', '11', '12', '1', '2', '3', '4','5'))
+
+
+(NEE.month.p <- monthlycumsum %>%
+  ggplot(., aes(x = month, y = NEE, group = GSYear, fill = GSYear)) +
+  geom_col(position = position_dodge2(preserve = 'single')) +
+  scale_fill_manual(values = GSYear.cols) + 
+  scale_x_discrete(labels = c("June", "July", "August", "September", "October", "November", "December", "January", "Febuary", "March", "April", "May")) + 
+  xlab("Month")+
+      ylab(bquote(' NEE (g C ' ~m^-2~')'))+
+    ggtitle("a") +
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.7),
+        legend.key.size = unit(0.5, 'cm'),
+        legend.title = element_text(size = 13),
+        legend.text = element_text(size = 13),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 13))+
+    guides(fill=guide_legend(title="Growing season year")))
+
+NEE.leg.month <- get_legend(NEE.month.p)
+
+
+(GPP.month.p <- monthlycumsum %>%
+  ggplot(., aes(x = month, y = GPPneg, group = GSYear, fill = GSYear)) +
+  geom_col(position = position_dodge2(preserve = 'single')) +
+  scale_fill_manual(values = GSYear.cols) + 
+  scale_x_discrete(labels = c("June", "July", "August", "September", "October", "November", "December", "January", "Febuary", "March", "April", "May")) + 
+  xlab("Month")+
+    ylab("GPP")+
+      ylab(bquote(' GPP (g C ' ~m^-2~')'))+
+    ggtitle("b")+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.7),
+        axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+tiff("GPPmonth.tiff", units="in", width=25, height=30,  res=300)
+print(GPP.month.p)
+dev.off()
+
+(ER.month.p <- monthlycumsum %>%
+  ggplot(., aes(x = month, y = ER, group = GSYear, fill = GSYear)) +
+  geom_col(position = position_dodge2(preserve = 'single')) +
+  scale_fill_manual(values = GSYear.cols) + 
+  scale_x_discrete(labels = c("June", "July", "August", "September", "October", "November", "December", "January", "Febuary", "March", "April", "May")) +  
+  xlab("Month")+
+      ylab(bquote(' ER (g C ' ~m^-2~')'))+
+    ggtitle("c") +
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.7),
+        axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+(CO2fluxes <- plot_grid(NEE.month.p + theme(legend.position = 'none', axis.title.x = element_blank(), axis.text.x = element_blank(), axis.title.y = element_text(margin = margin(r = 9))), NULL,
+          GPP.month.p + theme(legend.position = 'none', axis.title.x = element_blank(), axis.text.x = element_blank()), NEE.leg.month,
+          ER.month.p + theme(legend.position = 'none', axis.title.y = element_text(margin = margin(r = 6))), NULL,
+          ncol = 2, rel_heights = c(0.27, 0.27, 0.35), rel_widths = c(0.7, 0.3)))
+
+tiff("CO2fluxesmonthly.tiff", units="in", width=10, height=10,  res=300)
+print(CO2fluxes)
+dev.off()
+```
+
+
+```{r for publication env co2, fig.height = 12, fig.width= 10}
+#season.cols <- c('#91bfdb','#4575b4','#fee090', '#f46d43', '#d73027', '#8073ac')
+season.cols <- c('#4575b4', '#f46d43', '#d73027', '#8073ac')
+
+
+plot_grid(TS.GPP + theme(legend.position = 'none'), 
+          P.GPP + theme(legend.position = 'none'), 
+          ET.GPP+ theme(legend.position = 'none'), SWC.GPP+ theme(legend.position = 'none'), SWin.GPP+ theme(legend.position = 'none'), GPP.leg.month, ncol = 2)
+
+tiff("ERenv.tiff", units="in", width=10, height=12,  res=300)
+print(ER.env.plots)
+dev.off()
+
+tiff("GPPenv.tiff", units="in", width=10, height=12,  res=300)
+print(GPP.env.plots)
+dev.off()
+
+GPPER.env.plots <- plot_grid(TA.GPP + theme(legend.position = 'none'), TS.ER + theme(legend.position = 'none'),
+          SWC.GPP + theme(legend.position = 'none'), SWC.ER + theme(legend.position = 'none'),
+          ET.GPP+ theme(legend.position = 'none'), ET.ER + theme(legend.position = 'none'),
+          SWin.GPP+ theme(legend.position = 'none'), GPP.leg.month,
+          ncol = 2)
+
+tiff("GPPERenv.tiff", units="in", width=10, height=12,  res=300)
+print(GPPER.env.plots)
+dev.off()
+```
+
+
+
+```{r models with RECO}
+
+#Annual average
+#Q10.RECO<- lm(log(ER_LT.gC)~Ts.mean, data = input.r)
+Q10.RECO<- lm(log(ER_ngf.gC)~Ts.mean, data = input.r)
+summary(Q10.RECO)
+lnQ10 <- exp(10*0.1)
+
+
+#19/20
+input.1920 <- input.r %>% filter(GSYear == "19/20")
+monthly.1920 <- summary.month %>% filter(GSYear == "19/20")
+Q10.RECO.1920<- lm(log(ER_ngf.gC)~Ts.mean, data = input.1920)
+summary(Q10.RECO.1920)
+lnQ10.1920 <- exp(10*0.05)
+
+#20/21
+input.2021 <- input.r %>% filter(GSYear == "20/21")
+monthly.2021 <- summary.month %>% filter(GSYear == "20/21")
+Q10.RECO.2021<- lm(log(ER_ngf.gC)~Ts.mean, data = input.2021)
+summary(Q10.RECO.2021)
+lnQ10.2021 <- exp(10*0.11)
+
+#21/22
+input.2122 <- input.r %>% filter(GSYear == "21/22")
+monthly.2122 <- summary.month %>% filter(GSYear == "21/22")
+Q10.RECO.2122<- lm(log(ER_ngf.gC)~Ts.mean, data = input.2122)
+summary(Q10.RECO.2122)
+lnQ10 <- exp(10*0.11)
+
+
+ks.test(input.r$ER_LT.gC, "pnorm") # results suggest data does not come from a normal distribution
+hist(log(input.r$ER_LT.gC))
+
+model.1 <- lm(log(ER_ngf.gC)~Ts.mean+GSYear, data = input.r)
+summary(model.1)
+# log(ER) = 0.11 + 0.10 (Ts)
+
+model.2 <- lm(log(ER_LT.gC)~SWC.corr, data = input.r)
+summary(model.2)
+# log(ER) = 2 - 1.24 * (SWC)
+
+input.r$SWC2 <- input.r$SWC.corr^2
+model.2.p <- lm(log(ER_LT.gC)~SWC.corr+SWC2, data = input.r)
+summary(model.2.p)
+# log(ER) = -2.63 + 15.39 (SWC)- 13.84 (SWC^2)
+
+model.3 <- lm(log(ER_LT.gC)~ET, data = input.r)
+summary(model.3) 
+# log(ER) = 0.68 + 0.34 * (ET)
+
+model.sel(model.1, model.2, model.3)
+
+
+# 19/20 daily
+SWC.ER1920 <- lm(log(ER_ngf.gC) ~  SWC.corr, data = input.1920)
+SWC.ER1920.1 <- lm(log(ER_ngf.gC) ~  SWC.corr + I(SWC.corr^2), data = input.1920)
+SWC.ER1920.2 <- lm(log(ER_ngf.gC) ~  SWC.corr * I(SWC.corr^2), data = input.1920)
+summary(SWC.ER1920)
+model.sel(SWC.ER1920, SWC.ER1920.1, SWC.ER1920.2)
+
+plot(input.1920$SWC.corr, log(input.1920$ER_ngf.gC))
+
+SWCTs.ER <- lm(log(ER_LT.gC) ~ SWC.corr + Ts.mean, data = input.1920)
+SWCTs.ER.1 <- lm(log(ER_LT.gC) ~ SWC.corr * Ts.mean, data = input.1920)
+SWCTs.ER.2 <- lm(log(ER_LT.gC) ~ SWC.corr * I(SWC^2) + Ts.mean, data = input.1920)
+SWCTs.ER.3 <- lm(log(ER_LT.gC) ~ SWC.corr * I(SWC^2) * Ts.mean, data = input.1920)
+summary(SWCTs.ER.2)
+model.sel(SWCTs.ER,SWCTs.ER.1, SWCTs.ER.2, SWCTs.ER.3)
+
+
+# 20/21
+SWC.ER2021 <- lm(log(ER_ngf.gC) ~  SWC.corr, data = input.2021)
+SWC.ER2021.1 <- lm(log(ER_ngf.gC) ~  SWC.corr + I(SWC.corr^2), data = input.2021)
+SWC.ER2021.2 <- lm(log(ER_ngf.gC) ~  SWC.corr * I(SWC.corr^2), data = input.2021)
+summary(SWC.ER2021.2)
+model.sel(SWC.ER2021, SWC.ER2021.1, SWC.ER2021.2)
+
+
+
+
+# 21/22
+SWC.ER2122 <- lm(log(ER_ngf.gC) ~  SWC.corr, data = input.2122)
+SWC.ER2122.1 <- lm(log(ER_ngf.gC) ~  SWC.corr + I(SWC.corr^2), data = input.2122)
+SWC.ER2122.2 <- lm(log(ER_ngf.gC) ~  SWC.corr * I(SWC.corr^2), data = input.2122)
+summary(SWC.ER2122.2)
+model.sel(SWC.ER2122, SWC.ER2122.1, SWC.ER2122.2)
+```
+
+```{r models with GPP}
+cor.test(input.r$Ta.mean, input.r$Ts.mean) #Air temp and soil temp are sig. correlated 
+
+
+ks.test(log(input.r$GPP_LT.gC), "pnorm")
+hist(log(input.r$GPP_offset))
+GPP.lm1 <- lm(log(GPP_offset) ~ Ta.mean, input.r)
+
+GPP.model.all <- lm(GPP_LT.gC ~ SWC.corr * Ta.mean, input.r)
+Anova(GPP.model.all)
+
+options(na.action = "na.fail")
+m1 <- dredge(GPP.model.all)
+subset(m1, delta < 4)
+
+#19/20
+GPP.TA1920 <- lm(log(GPP_offset)~Ta.mean, input.1920)
+summary(GPP.TA1920)
+
+SWC.GPP1920 <- lm(log(GPP_offset) ~  SWC.corr, data = input.1920)
+# lnGPP = 1.67 - 0.84(SWC)
+SWC.GPP1920.1 <- lm(log(GPP_offset) ~  SWC.corr + I(SWC.corr^2), data = input.1920)
+SWC.GPP1920.2 <- lm(log(GPP_offset) ~  SWC.corr * I(SWC.corr^2), data = input.1920)
+summary(SWC.GPP1920)
+model.sel(SWC.GPP1920, SWC.GPP1920.1, SWC.GPP1920.2)
+
+GPP.ET1920 <- lm(log(GPP_offset)~ET, input.1920)
+summary(GPP.ET1920)
+
+
+#20/21
+GPP.TA2021 <- lm(log(GPP_offset)~Ta.mean, input.2021)
+summary(GPP.TA2021)
+
+SWC.GPP2021 <- lm(log(GPP_offset) ~  SWC.corr, data = input.2021)
+SWC.GPP2021.1 <- lm(log(GPP_offset) ~  SWC.corr + I(SWC.corr^2), data = input.2021)
+SWC.GPP2021.2 <- lm(log(GPP_offset) ~  SWC.corr * I(SWC.corr^2), data = input.2021)
+# lnGPP = 203.54 - 933.83(SWC) + 1431.47(SWC^2) - 726.19(SWC * SWC^2)
+summary(SWC.GPP2021.2)
+model.sel(SWC.GPP2021, SWC.GPP2021.1, SWC.GPP2021.2)
+
+GPP.ET2021 <- lm(log(GPP_offset)~ET, input.2021)
+summary(GPP.ET2021)
+
+#21/22
+GPP.TA2122 <- lm(log(GPP_offset)~Ta.mean, input.2122)
+summary(GPP.TA2122)
+
+SWC.GPP2122 <- lm(log(GPP_offset) ~  SWC.corr, data = input.2122)
+SWC.GPP2122.1 <- lm(log(GPP_offset) ~  SWC.corr + I(SWC.corr^2), data = input.2122)
+SWC.GPP2122.2 <- lm(log(GPP_offset) ~  SWC.corr * I(SWC.corr^2), data = input.2122)
+# lnGPP = 15.82 - 78.15(SWC) + 141.88(SWC^2) - 83.61(SWC * SWC^2)
+summary(SWC.GPP2122.2)
+model.sel(SWC.GPP2122, SWC.GPP2122.1, SWC.GPP2122.2)
+
+GPP.ET2122 <- lm(log(GPP_offset)~ET, input.2122)
+summary(GPP.ET2122)
+
+
+# all years together
+SWC.GPP <- lm(log(GPP_offset) ~  SWC.corr + GSYear, data = input.r)
+SWC.GPP.1 <- lm(log(GPP_offset) ~  SWC.corr + I(SWC.corr^2) + GSYear, data = input.r)
+SWC.GPP.2 <- lm(log(GPP_offset) ~  SWC.corr * I(SWC.corr^2), data = input.r)
+summary(SWC.GPP.1)
+model.sel(SWC.GPP, SWC.GPP.1, SWC.GPP.2)
+
+
+```
+
+```{r more GPP plots, fig.width = 16, fig.height=6}
+season.cols <- c('#4575b4', '#f46d43', '#d73027', '#8073ac')
+
+
+(TA.GPP.1920 <- ggplot(input.1920, aes(Ta.mean, GPP_offset)) +
+  geom_point(aes(color = season), size = 3) +
+  geom_smooth(method = "lm", se = F, aes(color = season)) +
+    ylim(0,15) + 
+    scale_color_manual(values = c('#d73027', '#8073ac'))+
+  #geom_smooth(span = 1.5, color = "black", se = F) +
+                 ylab(bquote('GPP  (g C ' ~m^-2~'' ~month^-1~')'))+
+    xlab("Air temperature (°C)")+
+  theme_classic() +
+    theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+(TA.GPP.2021 <- ggplot(input.2021, aes(Ta.mean, GPP_offset)) +
+  geom_point(aes(color = season), size = 3) +
+  geom_smooth(method = "lm", se = F, aes(color = season)) +
+        ylim(0,15) + 
+  #geom_smooth(span = 1.5, color = "black", se = F) +
+                 ylab(bquote('GPP  (g C ' ~m^-2~'' ~month^-1~')'))+
+    xlab("Air temperature (°C)")+
+    scale_color_manual(values = season.cols) + 
+  theme_classic() +
+    theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+(TA.GPP.2122 <- ggplot(input.2122, aes(Ta.mean, GPP_offset)) +
+  geom_point(aes(color = season), size = 3) +
+  geom_smooth(method = "lm", se = F, aes(color = season)) +
+        ylim(0,15) + 
+  #geom_smooth(span = 1.5, color = "black", se = F) +
+                 ylab(bquote('GPP  (g C ' ~m^-2~'' ~month^-1~')'))+
+    xlab("Air temperature (°C)")+
+    scale_color_manual(values = season.cols) + 
+  theme_classic() +
+    theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+(SWC.GPP <- ggplot(monthly.1920, aes(SWC, GPP)) +
+  geom_point(aes(color = season), size = 3) +
+   # geom_smooth(span = 1.3, se = F, aes(color = GSYear)) +
+    stat_smooth(method = lm, formula = y ~ poly(x, 2, raw = TRUE), se = F, aes(color = season)) +
+  #geom_smooth(span = 1.3, color = "black", se = F) +
+    scale_color_manual(values = season.cols) + 
+               ylab(bquote('GPP  (g C ' ~m^-2~'' ~month^-1~')'))+
+            xlab(bquote('SWC ('~m^-3~'/'~m^-3~')'))+
+  theme_classic()+
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+plot_grid(TA.GPP.1920, TA.GPP.2021, TA.GPP.2122, ncol = 3)
+
+
+
+
+
+
+win.ER <- (input.r %>%filter(season =="Winter") %>% ggplot(., aes(Ta.mean, GPP_offset)) +
+  geom_point(aes(color = GSYear), size = 3) +
+  geom_smooth(method = "lm", span = 1.3, se = F, aes(color = GSYear)) +
+    ylim(0,10)+
+       xlim(0,10)+
+    #geom_smooth(span  = 1.3, se = F, color = "black") +
+    scale_color_manual(values = c('#f46d43','#d73027'))+
+             ylab(bquote('ER  (g C ' ~m^-2~'' ~month^-1~')'))+
+    xlab("10-cm soil temperature (°C)")+
+    ggtitle("Winter") +
+  theme_classic() +
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+spr.ER <- (input.r %>%filter(season =="Spring") %>% ggplot(., aes(Ta.mean, GPP_offset)) +
+  geom_point(aes(color = GSYear), size = 3) +
+  geom_smooth(method = "lm", span = 1.3, se = F, aes(color = GSYear)) +
+    ylim(0,10)+
+       xlim(0,15)+
+    #geom_smooth(span  = 1.3, se = F, color = "black") +
+    scale_color_manual(values = c('#f46d43','#d73027'))+
+             ylab(bquote('ER  (g C ' ~m^-2~'' ~month^-1~')'))+
+    xlab("10-cm soil temperature (°C)")+
+    ggtitle("Spring") +
+  theme_classic() +
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+sum.ER <- (input.r %>%filter(season =="Summer") %>% ggplot(., aes(Ta.mean, GPP_offset)) +
+  geom_point(aes(color = GSYear), size = 3) +
+  geom_smooth(method = "lm", span = 1.3, se = F, aes(color = GSYear)) +
+    ylim(0,10)+
+       xlim(10,15)+
+    #geom_smooth(span  = 1.3, se = F, color = "black") +
+    scale_color_manual(values = season.cols) + 
+             ylab(bquote('ER  (g C ' ~m^-2~'' ~month^-1~')'))+
+    xlab("10-cm soil temperature (°C)")+
+    ggtitle("Summer") +
+  theme_classic() +
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+aut.ER <- (input.r %>%filter(season =="Autumn") %>% ggplot(., aes(Ta.mean, GPP_offset)) +
+  geom_point(aes(color = GSYear), size = 3) +
+  geom_smooth(method = "lm", span = 1.3, se = F, aes(color = GSYear)) +
+    ylim(0,15)+
+       xlim(4,15)+
+    #geom_smooth(span  = 1.3, se = F, color = "black") +
+    scale_color_manual(values = season.cols) + 
+             ylab(bquote('ER  (g C ' ~m^-2~'' ~month^-1~')'))+
+    xlab("10-cm soil temperature (°C)")+
+    ggtitle("Autumn") +
+  theme_classic() +
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+(seasonal.plots <- plot_grid(win.ER, spr.ER, sum.ER, aut.ER, ncol = 2))
+
+```
+
+```{r more ER plots, fig.width=16, fig.height=6}
+(TS.ER.1920 <- ggplot(input.1920, aes(Ts.mean, ER_LT.gC)) +
+  geom_point(aes(color = season), size = 3) +
+  geom_smooth(method = "lm", span = 1.3, se = F, aes(color = season)) +
+       ylim(0,15)+
+   xlim(0,20)+
+    #geom_smooth(span  = 1.3, se = F, color = "black") +
+    scale_color_manual(values = c('#d73027', '#8073ac'))+
+             ylab(bquote('ER  (g C ' ~m^-2~'' ~month^-1~')'))+
+    xlab("10-cm soil temperature (°C)")+
+   ggtitle("19/20") + 
+  theme_classic() +
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+(TS.ER.2021 <- ggplot(input.2021, aes(Ts.mean, ER_LT.gC)) +
+  geom_point(aes(color = season), size =3) +
+  geom_smooth(method = "lm", span = 1.3, se = F, aes(color = season)) +
+        ylim(0,15)+
+       xlim(0,20)+
+    #geom_smooth(span  = 1.3, se = F, color = "black") +
+    scale_color_manual(values = season.cols) + 
+             ylab(bquote('ER  (g C ' ~m^-2~'' ~month^-1~')'))+
+    xlab("10-cm soil temperature (°C)")+
+    ggtitle("20/21") +
+  theme_classic() +
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+(TS.ER.2122 <- ggplot(input.2122, aes(Ts.mean, ER_LT.gC)) +
+  geom_point(aes(color = season), size = 3) +
+  geom_smooth(method = "lm", span = 1.3, se = F, aes(color = season)) +
+    ylim(0,15)+
+       xlim(0,20)+
+    #geom_smooth(span  = 1.3, se = F, color = "black") +
+    scale_color_manual(values = season.cols) + 
+             ylab(bquote('ER  (g C ' ~m^-2~'' ~month^-1~')'))+
+    xlab("10-cm soil temperature (°C)")+
+    ggtitle("21/22") +
+  theme_classic() +
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+plot_grid(TS.ER.1920, TS.ER.2021, TS.ER.2122, ncol = 3)
+
+win.ER <- (input.r %>%filter(season =="Winter") %>% ggplot(., aes(Ts.mean, ER_LT.gC)) +
+  geom_point(aes(color = GSYear), size = 3) +
+  geom_smooth(method = "lm", span = 1.3, se = F, aes(color = GSYear)) +
+    ylim(0,10)+
+       xlim(0,10)+
+    #geom_smooth(span  = 1.3, se = F, color = "black") +
+    scale_color_manual(values = c('#f46d43','#d73027'))+
+             ylab(bquote('ER  (g C ' ~m^-2~'' ~day^-1~')'))+
+    xlab("10-cm soil temperature (°C)")+
+    ggtitle("Winter") +
+  theme_classic() +
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+spr.ER <- (input.r %>%filter(season =="Spring") %>% ggplot(., aes(Ts.mean, ER_LT.gC)) +
+  geom_point(aes(color = GSYear), size = 3) +
+  geom_smooth(method = "lm", span = 1.3, se = F, aes(color = GSYear)) +
+    ylim(0,10)+
+       xlim(0,15)+
+    #geom_smooth(span  = 1.3, se = F, color = "black") +
+    scale_color_manual(values = c('#f46d43','#d73027'))+
+             ylab(bquote('ER  (g C ' ~m^-2~'' ~day^-1~')'))+
+    xlab("10-cm soil temperature (°C)")+
+    ggtitle("Spring") +
+  theme_classic() +
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+sum.ER <- (input.r %>%filter(season =="Summer") %>% ggplot(., aes(Ts.mean, ER_LT.gC)) +
+  geom_point(aes(color = GSYear), size = 3) +
+  geom_smooth(method = "lm", span = 1.3, se = F, aes(color = GSYear)) +
+    ylim(0,10)+
+       xlim(10,15)+
+    #geom_smooth(span  = 1.3, se = F, color = "black") +
+    scale_color_manual(values = season.cols) + 
+             ylab(bquote('ER  (g C ' ~m^-2~'' ~day^-1~')'))+
+    xlab("10-cm soil temperature (°C)")+
+    ggtitle("Summer") +
+  theme_classic() +
+   theme(axis.text = element_text(size = 12),
+         axis.title = element_text(size = 13)))
+
+aut.ER <- (input.r %>%filter(season =="Autumn") %>% ggplot(., aes(Ts.mean, ER_LT.gC)) +
+  geom_point(aes(color = GSYear), size = 3) +
+  geom_smooth(method = "lm", span = 1.3, se = F, aes(color = GSYear)) +
+    ylim(0,15)+
+       xlim(4,15)+
+    #geom_smooth(span  = 1.3, se = F, color = "black") +
+    scale_color_manual(values = season.cols) + 
+             ylab(bquote('ER  (g C ' ~m^-2~'' ~day^-1~')'))+
+    xlab("10-cm soil temperature (°C)")+
+    ggtitle("Autumn") +
+  theme_classic() +
+   theme(axis.text = element_text(size = 12),
+    
+              axis.title = element_text(size = 13)))
+```
+
+```{r fig.width 12, fig.height = 12}
+seasonal.plots <- plot_grid(win.ER, spr.ER, sum.ER, aut.ER, ncol = 2)
+
+tiff("seasonaler.tiff", units="in", width=12, height=10,  res=300)
+print(seasonal.plots)
+dev.off()
+```
+
+
+```{r calculating flux footprint, include = FALSE}
+# using the online tool: https://footprint.kljun.net/
+
+# first need to organise data in format suitable for uploading
+
+# variables needed: 
+# yyyy = Year
+# mm = Month [1‐12]
+# day = Day of month [1‐31]
+# HH = Hour [0‐23] or [1‐24] – has to be in UTC, NOT local time
+# MM = Minutes, for example [0 30]
+# zm = Measurement height above ground [m]
+# d = Displacement height [m]
+# z0 = Roughness length [m] ‐ enter [‐999] if not known
+# u_mean = Mean wind speed at zm [ms‐1] ‐ enter [‐999] if not known
+# L = Obukhov length [m]
+# sigma_v = Standard deviation of lateral velocity fluctuations after rotation [ms‐1]
+# u_star = Friction velocity [ms‐1]  
+# wind_dir = Wind direction in degrees (of 360) for rotation of the footprint
+
+FFP <- input %>% select(Timestamp, Year, month,L,WS, sigma_v,  WD, ustar, L)
+#FFP[2:13] <- as.data.frame(sapply(FFP[2:13], as.numeric)) # convert data frame from character to numeric
+
+FFP$HH_UTC <- format(as.POSIXct(FFP$Timestamp), format = "%H")
+FFP$MM <- format(as.POSIXct(FFP$Timestamp), format = "%M")
+FFP$day <- format(as.POSIXct(FFP$Timestamp), format = "%d")
+
+FFP$zm <- "2.5"
+names(FFP)[3] <- "mm"
+names(FFP)[2] <- "yyyy"
+names(FFP)[5] <- "u_mean"
+names(FFP)[6] <- "sigma_v"
+names(FFP)[7] <- "wind_dir"
+names(FFP)[8] <- "u_star"
+FFP$d <- "0.07362071"
+FFP$z0 <- "-999"
+FFP <- FFP[, -1]
+FFP[is.na(FFP)] <- "-999" # change NA to -999 to comply with data format
+FFP <- as.data.frame(sapply(FFP, as.numeric)) # convert data frame from character to numeric
+
+FFP <- FFP[, c(1, 2, 3, 9,10,  11, 12, 13, 4, 8, 5,7, 6)] # change variable order to comply with data format
+
+meanmm  <- FFP %>% select(zm, d, L, z0, u_mean, sigma_v, wind_dir, u_star, mm, day, HH_UTC, MM) %>% ddply(c("mm","day", "HH_UTC", "MM"), summarise,
+                                                                                                 zm = mean(zm), 
+                                                                                                 d = mean(d),
+                                                                                                 z0 = mean(z0),
+                                                                                                 u_mean = mean(u_mean),
+                                                                                                 L = mean(L),
+                                                                                                 sigma_v = mean(sigma_v),
+                                                                                                 u_star = mean(u_star),
+                                                                                                 wind_dir = mean(wind_dir)
+                                                                                                 )
+  
+meanmm$yyyy <- "2022"
+meanmm <- meanmm[, c(13, 1, 2, 3,4, 5, 6, 7, 8, 9, 10, 11, 12)] # change variable order to comply with data format
+
+meanmm$zmL <-  meanmm$zm/meanmm$L
+
+FFP.GS <- meanmm %>% filter(mm ==  "12")
+FFP.NGS <- meanmm %>% filter(mm == "4" |mm ==  "5" |mm ==  "6" |mm ==  "7" |mm ==  "8" |mm ==  "9")
+
+#write.csv(FFP.GS, 'G:/Other computers/My Laptop/Documents/UTas/FluxProcessing_SP/Data/GS.csv', row.names = FALSE)
+#write.csv(FFP.NGS, 'G:/Other computers/My Laptop/Documents/UTas/FluxProcessing_SP/Data/NGS.csv', row.names = FALSE)
+
+#write.csv(FFP.2021.GS, 'G:/Other computers/My Laptop/Documents/UTas/FluxProcessing_SP/Data/FFP2021GS.csv', row.names = FALSE)
+
+#the full output file isn't working with the website. When I subset to ~2 months where there are no -999 values except in z0, the online modelling tool works. 
+```
+
+
+```{r missing data}
+input.met <- input[,c(2:17)]
+summary(input.met)
+(sum(is.na(input.met)))/42866 # 9% of met data missing over 2.5 years
+
+(sum(is.na(input$ER_ngf)))/42866
+```
