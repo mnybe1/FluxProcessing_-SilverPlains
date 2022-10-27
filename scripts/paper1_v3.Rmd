@@ -78,10 +78,10 @@ input$SWin <- ifelse(input$SWin < 0, 0, input$SWin)
 input$PAR <-ifelse(input$PAR <0, 0, input$PAR)
 
 #input$PAR[which(is.na(input$PAR))] <- (-21.19 + 1.02*(input$SWin)) #not sure that this is right
-correction.par<-input$PAR[which(is.na(input$PAR))]
-input$PAR[correction.par] <-  replace_na(input$SWin[correction.par] * 4.5 * 0.5) # because NAs at same time can't fill using SWin? 
+#correction.par<-input$PAR[which(is.na(input$PAR))]
+#input$PAR[correction.par] <-  replace_na(input$SWin[correction.par] * 4.5 * 0.5) # because NAs at same time can't fill using SWin? 
 
-plot(input$Timestamp, input$PAR)
+#plot(input$Timestamp, input$PAR)
 
 ```
 
@@ -167,8 +167,8 @@ autumn <- (input.r$month.name == "Apr" |input.r$month.name == "May")
 # define seasons (4)
 winter <- (input.r$month.name == "Jun" | input.r$month.name == "Jul" |input.r$month.name == "Aug")
 spring <- (input.r$month.name == "Sep"| input.r$month.name == "Oct" | input.r$month.name == "Nov")
-summer <- (input.r$month.name == "Dec" | input.r$month.name == "Jan" | input.r$month.name == "Feb")
-autumn <- (input.r$month.name == "Mar" | input.r$month.name == "Apr" |input.r$month.name == "May")
+summer <- (input.r$month.name == "Dec" | input.r$month.name == "Jan" | input.r$month.name == "Feb" | input.r$month.name =="Mar")
+autumn <- (input.r$month.name == "Apr" |input.r$month.name == "May")
 
 input.r$season[winter] <- "Winter"
 input.r$season[spring] <- "Spring"
@@ -180,8 +180,8 @@ season.cols <- c('#91bfdb','#fee090', '#f46d43', '#8073ac')
 ```
 
 ```{r add lagged variables anf offset variable, echo = FALSE}
-input.r$GPP.monthLag <- Lag(input.r$GPP_LT.gC, shift = +30)
-input.r$ER.monthLag <- Lag(input.r$ER_LT.gC, shift = +30)
+#input.r$GPP.monthLag <- Lag(input.r$GPP_LT.gC, shift = +30)
+#input.r$ER.monthLag <- Lag(input.r$ER_LT.gC, shift = +30)
 input.r$GPP_offset <- input.r$GPP_LT.gC + 1.25
 input.r$ER_ngf.gC <- ifelse(input.r$ER_ngf.gC <0, NA, input.r$ER_ngf.gC)
 
@@ -608,7 +608,7 @@ __Seasonal total GPP__
 
 ```{r GPP, echo = FALSE, message=FALSE}
 
-GPP.summary<- cum.co2fluxes %>% select(GPP_LT.gC,dayssinceJun1, GSYear, season) %>% 
+GPP.summary<- cum.co2fluxes %>% dplyr::select(GPP_LT.gC,dayssinceJun1, GSYear, season) %>% 
   group_by(GSYear, season) %>% 
    ddply(c("GSYear", "season"), summarise,
   seasonal.total = sum(GPP_LT.gC))
@@ -810,9 +810,9 @@ SWin.GPPL <- ggplot(summary.month, aes(SWin, GPPlag)) +
   theme_classic()
 
 
-plot_grid(TA.GPPL + theme(legend.position = 'none'), TS.GPPL + theme(legend.position = 'none'), 
-          P.GPPL + theme(legend.position = 'none'), 
-          ET.GPPL+ theme(legend.position = 'none'), SWC.GPPL+ theme(legend.position = 'none'), SWin.GPPL+ theme(legend.position = 'none'), GPP.leg.month, ncol = 2)
+#plot_grid(TA.GPPL + theme(legend.position = 'none'), TS.GPPL + theme(legend.position = 'none'), 
+ #         P.GPPL + theme(legend.position = 'none'), 
+  #        ET.GPPL+ theme(legend.position = 'none'), SWC.GPPL+ theme(legend.position = 'none'), SWin.GPPL+ theme(legend.position = 'none'), GPP.leg.month, ncol = 2)
 ```
 
 
@@ -822,7 +822,7 @@ __Seasonal total ER__
 
 ```{r ER, echo = FALSE, message=FALSE}
 
-ER.summary<- cum.co2fluxes %>% select(ER_LT.gC,dayssinceJun1, GSYear, season) %>% 
+ER.summary<- cum.co2fluxes %>% dplyr::select(ER_LT.gC,dayssinceJun1, GSYear, season) %>% 
   group_by(GSYear, season) %>% 
    ddply(c("GSYear", "season"), summarise,
   seasonal.total = sum(ER_LT.gC))
@@ -1008,7 +1008,7 @@ GSYear.cols <- c('#f46d43', '#4575b4', '#91bfdb')
 
 
 monthlycumsum <- input.r %>%
-  select(NEE_LT.gC, GPP_LT.gC, ER_LT.gC, dayssinceJun1, GSYear, season, month) %>% 
+  dplyr:: select(NEE_LT.gC, GPP_LT.gC, ER_LT.gC, dayssinceJun1, GSYear, season, month) %>% 
   group_by(GSYear, month) %>% 
   ddply(c("month", "GSYear"), summarise,
         NEE = sum(NEE_LT.gC),
@@ -1521,7 +1521,7 @@ dev.off()
 # u_star = Friction velocity [ms‐1]  
 # wind_dir = Wind direction in degrees (of 360) for rotation of the footprint
 
-FFP <- input %>% select(Timestamp, Year, month,L,WS, sigma_v,  WD, ustar, L)
+FFP <- input %>% dplyr::select(Timestamp, Year, month,L,WS, sigma_v,  WD, u_star)
 #FFP[2:13] <- as.data.frame(sapply(FFP[2:13], as.numeric)) # convert data frame from character to numeric
 
 FFP$HH_UTC <- format(as.POSIXct(FFP$Timestamp), format = "%H")
@@ -1541,9 +1541,11 @@ FFP <- FFP[, -1]
 FFP[is.na(FFP)] <- "-999" # change NA to -999 to comply with data format
 FFP <- as.data.frame(sapply(FFP, as.numeric)) # convert data frame from character to numeric
 
-FFP <- FFP[, c(1, 2, 3, 9,10,  11, 12, 13, 4, 8, 5,7, 6)] # change variable order to comply with data format
+FFP <- FFP[, c(1, 2, 3, 9,10, 6, 11, 12, 13, 4, 8, 5,7)] # change variable order to comply with data format
 
-meanmm  <- FFP %>% select(zm, d, L, z0, u_mean, sigma_v, wind_dir, u_star, mm, day, HH_UTC, MM) %>% ddply(c("mm","day", "HH_UTC", "MM"), summarise,
+write.csv(FFP, "C:/Users/Marion/Documents/UTas/FluxProcessing_SilverPlains/FFP.csv")
+
+meanmm  <- FFP %>% dplyr::select(zm, d, L, z0, u_mean, sigma_v, wind_dir, u_star, mm, day, HH_UTC, MM) %>% ddply(c("mm","day", "HH_UTC", "MM"), summarise,
                                                                                                  zm = mean(zm), 
                                                                                                  d = mean(d),
                                                                                                  z0 = mean(z0),
@@ -1578,3 +1580,47 @@ summary(input.met)
 
 (sum(is.na(input$ER_ngf)))/42866
 ```
+
+```{r Carbon uptake period}
+summer.input <- input.r %>% filter (season == "Summer" | season =="Autumn")
+
+cum.co2fluxes.sum <- summer.input%>%
+  dplyr::select(NEE_LT.gC, GPP_LT.gC, ER_LT.gC, dayssinceJun1, GSYear, season) %>% 
+  group_by(GSYear) %>% 
+  mutate(NEEcum = cumsum(NEE_LT.gC),
+         GPPcum = cumsum(GPP_LT.gC),
+         ERcum = cumsum(ER_LT.gC))
+
+
+
+(NEEcum.p <-cum.co2fluxes.sum %>% 
+  ggplot(., aes(dayssinceJun1, NEEcum, group = GSYear, color = GSYear)) +
+  geom_line(size = 1, aes(color = GSYear))+
+   # scale_color_manual(values = group.colour)+
+       scale_x_continuous(limits = c(184, 365))+
+  ylab(bquote('Cumulative NEE (g C ' ~m^-2~')'))+
+  xlab("Days since June 1st")+
+  theme_classic()+ 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13)))
+
+(NEEtime.p <-summer.input%>%
+  ggplot(., aes(dayssinceJun1, NEE_LT.gC, color = GSYear)) +
+  geom_line()+
+        #scale_color_manual(values = group.colour)+
+       scale_x_continuous(limits = c(184, 365))+
+
+  ylab(bquote(' NEE (g C ' ~m^-2~')'))+
+  xlab("Days since June 1st")+
+  theme_classic()+ 
+    theme(axis.title = element_text(size = 14),
+          axis.text = element_text(size = 13)))
+
+CO2uptakesum <- summer.input %>% filter(NEE_LT.gC<0)
+CO2uptakesum.1920 <- CO2uptakesum %>% filter(GSYear == '19/20') #49
+CO2uptakesum.2021 <- CO2uptakesum %>% filter(GSYear == '20/21') #101
+CO2uptakesum.2122 <- CO2uptakesum %>% filter(GSYear == '21/22') #107
+
+
+```
+
